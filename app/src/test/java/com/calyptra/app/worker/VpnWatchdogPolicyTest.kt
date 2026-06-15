@@ -43,4 +43,22 @@ class VpnWatchdogPolicyTest {
             VpnWatchdogPolicy.decide(protectionEnabled = true, vpnRunning = false, permissionHeld = false)
         )
     }
+
+    @Test
+    fun `yields to another VPN even when permission still appears held`() {
+        // Tailscale revoked us; permissionHeld can still read true on some devices.
+        // We must NOT restart, or we would kill the other VPN.
+        for (held in listOf(true, false)) {
+            assertEquals(
+                "revoked-by-other-VPN must be NONE (held=$held)",
+                WatchdogAction.NONE,
+                VpnWatchdogPolicy.decide(
+                    protectionEnabled = true,
+                    vpnRunning = false,
+                    permissionHeld = held,
+                    yieldedToOtherVpn = true
+                )
+            )
+        }
+    }
 }

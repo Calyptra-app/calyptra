@@ -45,6 +45,13 @@ class CalyptraApp : Application() {
         setupWatchdogLockstep()
     }
 
+    /** Fire-and-forget persistence of the "yielded to another VPN" flag (CFT-L1)
+     *  on the app-lifetime scope, so the write survives the VPN service being
+     *  torn down in the same breath (onRevoke -> stopVpn). */
+    fun persistYieldAsync(yielded: Boolean) {
+        ioScope.launch { preferencesRepository.setYieldedToOtherVpn(yielded) }
+    }
+
     /** Watchdog runs iff protection is intended, no matter who writes the
      *  pref — ViewModel, boot receiver, or future writers (PWR-L2, FR-9.2). */
     private fun setupWatchdogLockstep() {

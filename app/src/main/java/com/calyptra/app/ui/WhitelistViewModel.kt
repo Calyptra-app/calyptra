@@ -1,11 +1,14 @@
 package com.calyptra.app.ui
 
 import android.app.Application
+import android.content.Intent
 import android.content.pm.PackageManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.calyptra.app.CalyptraApp
 import com.calyptra.app.data.WhitelistedApp
+import com.calyptra.app.vpn.AdBlockVpnService
+import com.calyptra.app.vpn.VpnController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -79,6 +82,16 @@ class WhitelistViewModel(application: Application) : AndroidViewModel(applicatio
                 // Add
                 val entity = WhitelistedApp(app.packageName, app.label, Instant.now())
                 whitelistDao.insert(entity)
+            }
+            // Per-app routing is baked into the live tunnel at establish() time,
+            // so re-establish it now — otherwise this toggle has no effect until
+            // protection is manually cycled off/on (WL-L1).
+            if (VpnController.isRunning.value) {
+                val context = getApplication<Application>()
+                val intent = Intent(context, AdBlockVpnService::class.java).apply {
+                    action = AdBlockVpnService.ACTION_RECONFIGURE
+                }
+                context.startService(intent)
             }
         }
     }

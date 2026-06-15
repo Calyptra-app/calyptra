@@ -188,6 +188,9 @@ class MainViewModel(
         )
         viewModelScope.launch {
             preferencesRepository.setProtectionEnabled(enabled)
+            // An explicit parent toggle ends any yield to another VPN (CFT-L1):
+            // re-enabling means we want the slot back; disabling makes it moot.
+            preferencesRepository.setYieldedToOtherVpn(false)
         }
     }
 
