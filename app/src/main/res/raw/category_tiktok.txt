@@ -1,0 +1,11 @@
+# TikTok / ByteDance consumer domains (SOC-L1). Subdomains match automatically.
+tiktok.com
+tiktokv.com
+tiktokcdn.com
+tiktokcdn-us.com
+musical.ly
+muscdn.com
+byteoversea.com
+ibytedtos.com
+ipstatp.com
+isnssdk.com

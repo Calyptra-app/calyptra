@@ -1,0 +1,5 @@
+# Instagram domains (SOC-L1)
+instagram.com
+cdninstagram.com
+instagr.am
+ig.me

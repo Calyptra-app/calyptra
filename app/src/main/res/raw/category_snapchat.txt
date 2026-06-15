@@ -1,0 +1,7 @@
+# Snapchat domains (SOC-L1)
+snapchat.com
+sc-cdn.net
+snapkit.com
+snapads.com
+bitmoji.com
+sc-prod.net

@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Calyptra Preferences Schema",
+  "description": "DataStore preferences - 'settings' store. Extension property Context.dataStore.",
+  "file": "app/src/main/java/com/calyptra/app/data/PreferencesRepository.kt",
+  "construction": "PreferencesRepository(context: Context) — uses Context.dataStore extension property",
+  "keys": {
+    "protection_enabled": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether VPN protection is currently requested. Read by AdBlockVpnService at startup; service stops itself if false. Written by MainViewModel.setProtectionEnabled().",
+      "readers": [
+        "AdBlockVpnService",
+        "MainViewModel"
+      ],
+      "writers": [
+        "MainViewModel"
+      ]
+    },
+    "last_blocklist_update": {
+      "type": "long",
+      "default": 0,
+      "description": "Epoch milliseconds of last successful remote blocklist update. Displayed as 'Last Updated' on MainScreen. Written atomically with blocklist_version via updateBlocklistMetadata().",
+      "readers": [
+        "MainViewModel"
+      ],
+      "writers": [
+        "BlocklistUpdateWorker (via updateBlocklistMetadata)"
+      ]
+    },
+    "blocklist_version": {
+      "type": "string",
+      "default": "bundled",
+      "description": "Identifier for current blocklist source. 'bundled' = default only, 'remote-update' = includes downloaded Hagezi Light update. Written atomically with last_blocklist_update.",
+      "readers": [
+        "MainViewModel"
+      ],
+      "writers": [
+        "BlocklistUpdateWorker (via updateBlocklistMetadata)"
+      ]
+    },
+    "game_ads_allowed": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether game ad SDK domains (Unity Ads, AppLovin, Vungle, ironSource, Chartboost, Meta AN) are exempted from blocking. Allows rewarded video in free games. Collected reactively by AdBlockVpnService → BlocklistManager.allowGameAds (@Volatile). Takes effect immediately without VPN restart.",
+      "readers": [
+        "MainViewModel",
+        "AdBlockVpnService"
+      ],
+      "writers": [
+        "MainViewModel"
+      ]
+    },
+    "safe_search_enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether DNS-level SafeSearch is enforced for Google (~139 TLDs), Bing, and DuckDuckGo. Redirects domains to forced-safe endpoints. Collected reactively by AdBlockVpnService → SafeSearchManager.safeSearchEnabled (@Volatile).",
+      "readers": [
+        "MainViewModel",
+        "AdBlockVpnService"
+      ],
+      "writers": [
+        "MainViewModel"
+      ]
+    },
+    "youtube_restrict_level": {
+      "type": "string",
+      "default": "strict",
+      "description": "YouTube Restricted Mode level: 'off' (no redirect), 'moderate' (restrictmoderate.youtube.com), or 'strict' (restrict.youtube.com). Covers youtube.com, www/m.youtube.com, youtubei.googleapis.com, youtube.googleapis.com, youtube-nocookie.com, music.youtube.com. Collected reactively by AdBlockVpnService → SafeSearchManager.youtubeRestrictLevel (@Volatile).",
+      "readers": [
+        "MainViewModel",
+        "AdBlockVpnService"
+      ],
+      "writers": [
+        "MainViewModel"
+      ]
+    },
+    "pin_hash": {
+      "type": "string",
+      "default": "",
+      "description": "Base64 PBKDF2WithHmacSHA256 hash (100k iterations) of the 4-digit parent PIN. Empty string means no PIN set. Written via PinStore interface implemented by PreferencesRepository (PIN-L1).",
+      "readers": [
+        "PinManager"
+      ],
+      "writers": [
+        "PinManager"
+      ]
+    },
+    "pin_salt": {
+      "type": "string",
+      "default": "",
+      "description": "Base64 16-byte SecureRandom salt for the PIN hash. Rotated on every setPin (PIN-L1).",
+      "readers": [
+        "PinManager"
+      ],
+      "writers": [
+        "PinManager"
+      ]
+    },
+    "pin_failed_attempts": {
+      "type": "int",
+      "default": 0,
+      "description": "Consecutive failed PIN attempts. Reset to 0 on successful verify or setPin. Feeds LockoutPolicy (PIN-L4).",
+      "readers": [
+        "PinManager"
+      ],
+      "writers": [
+        "PinManager"
+      ]
+    },
+    "pin_lockout_until": {
+      "type": "long",
+      "default": 0,
+      "description": "Epoch millis until which PIN entry is locked out (30s doubling per failure from the 5th, capped 300s). Persisted so process death does not bypass lockout (PIN-L4).",
+      "readers": [
+        "PinManager"
+      ],
+      "writers": [
+        "PinManager"
+      ]
+    },
+    "battery_prompt_shown": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the one-time battery-optimization exemption explainer was shown after first enable (PWR-L3, FR-9.4).",
+      "readers": [
+        "MainViewModel"
+      ],
+      "writers": [
+        "MainViewModel"
+      ]
+    },
+    "blocked_categories": {
+      "type": "stringSet",
+      "default": [],
+      "description": "Enabled social-media block categories by SocialCategory.key (tiktok, instagram, snapchat, facebook, twitter, reddit, discord, twitch). Collected reactively by AdBlockVpnService -> CategoryBlockManager. Category hits answer NXDOMAIN (SOC-L2/L3). Default empty = nothing blocked.",
+      "readers": [
+        "MainViewModel",
+        "AdBlockVpnService"
+      ],
+      "writers": [
+        "MainViewModel"
+      ]
+    }
+  },
+  "write_methods": {
+    "setProtectionEnabled(Boolean)": "individual edit",
+    "setSafeSearchEnabled(Boolean)": "individual edit",
+    "setYoutubeRestrictLevel(String)": "individual edit",
+    "setGameAdsAllowed(Boolean)": "individual edit",
+    "updateBlocklistMetadata(timestamp: Long, version: String)": "atomic edit — writes both last_blocklist_update and blocklist_version in single transaction"
+  }
+}

@@ -1,0 +1,29 @@
+# Android/Kotlin
+*.iml
+.gradle/
+.idea/
+build/
+app/build/
+target/
+out/
+local.properties
+.DS_Store
+Thumbs.db
+*.swp
+*.class
+*.apk
+*.ap_
+*.dex
+
+# Generated
+output.txt
+
+# AI tooling
+.ai/
+
+# Signing keys
+*.keystore
+*.jks
+
+# Node
+node_modules/

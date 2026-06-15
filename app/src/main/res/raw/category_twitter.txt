@@ -1,0 +1,6 @@
+# X / Twitter domains (SOC-L1)
+twitter.com
+x.com
+twimg.com
+t.co
+twitpic.com

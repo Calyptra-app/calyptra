@@ -1,0 +1,11 @@
+# Facebook / Meta consumer domains (SOC-L1).
+# Deliberately excludes whatsapp.com / whatsapp.net (family messaging).
+facebook.com
+facebook.net
+fbcdn.net
+fb.com
+fb.me
+fbsbx.com
+messenger.com
+m.me
+fb.watch

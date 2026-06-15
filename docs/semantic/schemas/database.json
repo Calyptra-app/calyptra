@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Calyptra Database Schema",
+  "description": "Room database v2 - calyptra_database (MIGRATION_1_2 is additive: protection_events only)",
+  "version": 2,
+  "entities": {
+    "blocked_stat": {
+      "description": "Daily ad block count. One row per calendar day.",
+      "file": "app/src/main/java/com/calyptra/app/data/BlockedStat.kt",
+      "dao": "app/src/main/java/com/calyptra/app/data/StatsDao.kt",
+      "columns": {
+        "date": {
+          "type": "TEXT",
+          "kotlinType": "LocalDate",
+          "primaryKey": true,
+          "converter": "Converters.fromLocalDate / toLocalDate (ISO-8601 string)",
+          "example": "2025-12-29"
+        },
+        "count": {
+          "type": "INTEGER",
+          "kotlinType": "Int",
+          "description": "Number of domains blocked on this date",
+          "example": 42
+        }
+      },
+      "operations": {
+        "getTotalBlocked": "SELECT SUM(count) (returns Flow<Int?>)",
+        "getBlockedCountForDate": "SELECT count WHERE date = :date (returns Flow<Int?>)",
+        "insertOrUpdate": "INSERT OR REPLACE (full entity upsert)",
+        "incrementCount": "INSERT INTO BlockedStat (date, count) VALUES (:date, 1) ON CONFLICT(date) DO UPDATE SET count = count + 1 — atomic single-statement upsert"
+      },
+      "notes": "incrementCount is the primary write path. Creates row with count=1 on first call of the day; increments on subsequent calls. No separate insertIfNotExists step."
+    },
+    "whitelisted_app": {
+      "description": "Apps excluded from VPN ad blocking. Checked at VPN tunnel setup.",
+      "file": "app/src/main/java/com/calyptra/app/data/WhitelistedApp.kt",
+      "dao": "app/src/main/java/com/calyptra/app/data/WhitelistDao.kt",
+      "columns": {
+        "packageName": {
+          "type": "TEXT",
+          "kotlinType": "String",
+          "primaryKey": true,
+          "example": "com.sybo.subwaysurfers"
+        },
+        "appName": {
+          "type": "TEXT",
+          "kotlinType": "String",
+          "description": "Human-readable app name",
+          "example": "Subway Surfers"
+        },
+        "addedAt": {
+          "type": "INTEGER",
+          "kotlinType": "Instant",
+          "converter": "Converters.fromInstant / toInstant (epoch millis)",
+          "description": "When the app was whitelisted"
+        }
+      },
+      "operations": {
+        "getAll": "SELECT * (returns Flow<List<WhitelistedApp>>) — for UI",
+        "getAllPackageNames": "SELECT packageName (returns List<String>, suspend) — used by VPN service at tunnel setup",
+        "insert": "INSERT OR REPLACE (full entity)",
+        "delete": "DELETE by entity object (@Delete annotation)"
+      },
+      "notes": "delete() takes a WhitelistedApp entity, not a packageName string. No isWhitelisted flow query — UI derives whitelist state from getAll()."
+    },
+    "protection_events": {
+      "description": "F13 tamper log (TML-L1): one row per protection state transition. Records protection STATE only — never domains or browsing activity (Constitution I). Added in v2.",
+      "file": "app/src/main/java/com/calyptra/app/data/ProtectionEvent.kt",
+      "dao": "app/src/main/java/com/calyptra/app/data/ProtectionEventDao.kt",
+      "columns": {
+        "id": {
+          "type": "INTEGER",
+          "kotlinType": "Long",
+          "primaryKey": true,
+          "autoIncrement": true
+        },
+        "timestampMillis": {
+          "type": "INTEGER",
+          "kotlinType": "Long",
+          "indexed": true,
+          "description": "Epoch millis of the transition (system clock)"
+        },
+        "type": {
+          "type": "TEXT",
+          "kotlinType": "String",
+          "description": "ProtectionEventType.name",
+          "enum": [
+            "ENABLED_USER",
+            "ENABLED_BOOT",
+            "ENABLED_WATCHDOG",
+            "DISABLED_PARENT",
+            "REVOKED_OTHER_VPN",
+            "STOPPED_UNEXPECTED",
+            "RESTORE_FAILED"
+          ]
+        }
+      },
+      "operations": {
+        "insert": "plain INSERT (append-only)",
+        "eventsSince": "SELECT WHERE timestampMillis >= :cutoff ORDER BY timestampMillis DESC, id DESC (Flow) — timeline UI",
+        "latestType": "SELECT type ... LIMIT 1 (suspend) — watchdog dedup",
+        "prune": "DELETE rows outside the newest-:keepCount AND older than :minTimestampMillis",
+        "insertAndPrune": "@Transaction insert + prune — the only production write path (FR-13.6)"
+      },
+      "notes": "Retention: newest 500 ∪ last 30 days (RetentionPolicy). Writes happen off the DNS packet path only (FR-13.2). ~20 KB worst case."
+    }
+  }
+}

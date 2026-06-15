@@ -1,0 +1,95 @@
+<resources>
+    <string name="app_name">Calyptra</string>
+    <string name="protection_enabled">Protection Active</string>
+    <string name="vpn_notification_text">Calyptra is blocking ads in the background</string>
+    <string name="protection_disabled">Protection Off</string>
+    <string name="ads_blocked_today">Ads blocked today</string>
+    <string name="ads_blocked_total">Total ads blocked</string>
+    <string name="enable_protection">Enable Protection</string>
+    <string name="disable_protection">Disable Protection</string>
+    <string name="whitelist_title">App Whitelist</string>
+    <string name="whitelist_hint">Tap an app to allow its ads</string>
+    <string name="permission_required_title">Permission Required</string>
+    <string name="permission_required_desc">Calyptra needs permission to set up a VPN connection to block ads. We do not track your data.</string>
+    <string name="grant_permission">Grant Permission</string>
+    <string name="game_ads_title">Allow game ads</string>
+    <string name="game_ads_description">Let kids earn rewards in free games</string>
+    <string name="safesearch_title">Force SafeSearch</string>
+    <string name="safesearch_description">Filter explicit results on Google, Bing, DuckDuckGo</string>
+    <string name="youtube_restrict_title">YouTube Restricted Mode</string>
+    <string name="youtube_restrict_description">Filter mature content on YouTube</string>
+    <string name="youtube_off">Off</string>
+    <string name="youtube_moderate">Moderate</string>
+    <string name="youtube_strict">Strict</string>
+    <string name="alert_channel_name">Protection Alerts</string>
+    <string name="alert_channel_description">Important alerts when protection stops unexpectedly</string>
+    <string name="pin_setup_title">Set Parent PIN</string>
+    <string name="pin_setup_message">Create a 4-digit PIN to protect these settings</string>
+    <string name="pin_confirm_message">Re-enter the PIN to confirm</string>
+    <string name="pin_challenge_title">Parent PIN Required</string>
+    <string name="pin_challenge_message">Enter the 4-digit parent PIN</string>
+    <string name="pin_wrong">Wrong PIN. %1$d attempts left</string>
+    <string name="pin_mismatch">PINs don\'t match. Try again</string>
+    <string name="pin_locked">Too many attempts. Try again in %1$d s</string>
+    <string name="pin_forgot_hint">Forgot the PIN? Clear the app\'s data in system settings to reset it.</string>
+    <string name="pin_confirm">Confirm</string>
+    <string name="pin_cancel">Cancel</string>
+    <string name="revoked_alert_title">Protection stopped</string>
+    <string name="revoked_alert_text">Another VPN app took over. Tap to re-enable Calyptra.</string>
+    <string name="conflict_other_vpn">Unprotected: another VPN app is in control. Re-enable Calyptra to restore protection.</string>
+    <string name="conflict_private_dns">Private DNS is on in system settings and may bypass protection. Set it to Automatic or Off.</string>
+    <string name="conflict_reenable">Re-enable</string>
+    <string name="conflict_open_settings">Open Settings</string>
+    <string name="watchdog_alert_title">Protection stopped</string>
+    <string name="watchdog_alert_text">Calyptra couldn\'t restore protection. Open the app to re-enable it.</string>
+    <string name="battery_hint_title">Keep protection alive</string>
+    <string name="battery_hint_desc">Allow Calyptra to ignore battery optimizations so the system doesn\'t stop it</string>
+    <string name="battery_prompt_message">To keep your child protected, allow Calyptra to ignore battery optimizations. Otherwise some phones stop protection after a few hours.</string>
+    <string name="battery_allow">Allow</string>
+    <string name="battery_later">Later</string>
+    <string name="alwayson_hint_title">Always-on VPN is off</string>
+    <string name="alwayson_hint_desc">Turn it on in VPN settings for the strongest protection</string>
+    <string name="alwayson_open">VPN Settings</string>
+    <string name="category_section_title">App Blocking</string>
+    <string name="category_section_desc">Block social apps and sites on this device</string>
+    <string name="category_facebook_note">WhatsApp stays available</string>
+
+    <!-- F12 UI redesign: kid home -->
+    <string name="home_status_on">Protected!</string>
+    <string name="home_status_off">Not protected</string>
+    <string name="home_subtitle_on">Ads are being blocked</string>
+    <string name="home_subtitle_off">Tap the shield to turn protection on</string>
+    <string name="stats_heading">Ads stopped</string>
+    <string name="stats_today_short">today</string>
+    <string name="stats_total_short">all time</string>
+
+    <!-- F12 UI redesign: parent settings -->
+    <string name="settings_title">Parent Settings</string>
+    <string name="cd_open_settings">Parent settings (PIN required)</string>
+    <string name="cd_back">Back</string>
+    <string name="settings_section_filters">Content filters</string>
+    <string name="settings_section_health">Protection health</string>
+    <string name="whitelist_row_desc">Allow ads in specific apps</string>
+    <string name="blocklist_updated">Blocklist updated: %1$s</string>
+    <string name="blocklist_never">Never</string>
+
+    <!-- F13 protection timeline (parent-facing) -->
+    <string name="timeline_title">Protection history</string>
+    <string name="timeline_row_desc">See when protection was off, and why</string>
+    <string name="timeline_empty">No events yet</string>
+    <string name="timeline_today">Today</string>
+    <string name="timeline_yesterday">Yesterday</string>
+    <string name="timeline_event_enabled_user">Protection turned on</string>
+    <string name="timeline_event_enabled_boot">Turned on automatically after restart</string>
+    <string name="timeline_event_enabled_watchdog">Protection restored automatically</string>
+    <string name="timeline_event_disabled_parent">Turned off with the parent PIN</string>
+    <string name="timeline_event_revoked">Stopped by another VPN app</string>
+    <string name="timeline_event_stopped">Protection stopped unexpectedly</string>
+    <string name="timeline_event_restore_failed">Protection could not be restored</string>
+    <string name="timeline_off_for">Off for %1$s</string>
+    <string name="timeline_still_off">Still off</string>
+    <string name="timeline_duration_days">%1$d d %2$d h</string>
+    <string name="timeline_duration_hours">%1$d h %2$d min</string>
+    <string name="timeline_duration_minutes">%1$d min</string>
+    <string name="timeline_duration_under_minute">under a minute</string>
+</resources>

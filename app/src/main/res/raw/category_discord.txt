@@ -1,0 +1,7 @@
+# Discord domains (SOC-L1)
+discord.com
+discordapp.com
+discordapp.net
+discord.gg
+discord.media
+discordstatus.com

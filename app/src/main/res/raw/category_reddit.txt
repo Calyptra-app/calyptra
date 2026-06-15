@@ -1,0 +1,6 @@
+# Reddit domains (SOC-L1)
+reddit.com
+redd.it
+redditmedia.com
+redditstatic.com
+redditcdn.com

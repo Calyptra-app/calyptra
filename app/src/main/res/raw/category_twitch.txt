@@ -1,0 +1,6 @@
+# Twitch domains (SOC-L1)
+twitch.tv
+ttvnw.net
+jtvnw.net
+twitchcdn.net
+twitchsvc.net
