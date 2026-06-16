@@ -1,5 +1,7 @@
 package com.calyptra.app.ui.settings
 
+import android.content.Intent
+import android.net.Uri
 import android.net.VpnService
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -49,6 +51,13 @@ import com.calyptra.app.ui.GatedAction
 import com.calyptra.app.ui.MainUiState
 import com.calyptra.app.ui.MainViewModel
 import com.calyptra.app.ui.theme.CalyptraTheme
+
+// Open-source / legal links surfaced in the About card: the AGPL-3.0 §6 written
+// source offer (for sideloaded APKs) plus the privacy policy, reachable behind
+// the PIN-gated settings door.
+private const val URL_SOURCE = "https://github.com/Calyptra-app/calyptra"
+private const val URL_LICENSE = "https://github.com/Calyptra-app/calyptra/blob/main/LICENSE"
+private const val URL_PRIVACY = "https://github.com/Calyptra-app/calyptra/blob/main/PRIVACY.md"
 
 /**
  * The parent's world (F12 §5), reached only through the PIN-gated gear on the
@@ -111,6 +120,10 @@ fun ParentSettingsScreen(
         onTimelineClick = onNavigateToTimeline,
         onBatteryAllow = { context.startActivity(viewModel.batteryExemptionIntent()) },
         onOpenVpnSettings = { context.startActivity(viewModel.vpnSettingsIntent()) },
+        onOpenUrl = { url ->
+            // No-op if the device has no browser, rather than crashing on ActivityNotFound.
+            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+        },
         modifier = modifier
     )
 }
@@ -130,6 +143,7 @@ fun ParentSettingsContent(
     onTimelineClick: () -> Unit,
     onBatteryAllow: () -> Unit,
     onOpenVpnSettings: () -> Unit,
+    onOpenUrl: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Scaffold(
@@ -272,6 +286,31 @@ fun ParentSettingsContent(
                     title = stringResource(R.string.timeline_title),
                     description = stringResource(R.string.timeline_row_desc),
                     onClick = onTimelineClick
+                )
+            }
+
+            // About / open source: satisfies the AGPL-3.0 §6 written source offer
+            // for sideloaded APKs and surfaces the privacy policy to the parent.
+            SettingsCard(title = stringResource(R.string.settings_section_about)) {
+                Text(
+                    stringResource(R.string.about_blurb),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                SettingNavRow(
+                    title = stringResource(R.string.about_source_title),
+                    description = stringResource(R.string.about_source_desc),
+                    onClick = { onOpenUrl(URL_SOURCE) }
+                )
+                SettingNavRow(
+                    title = stringResource(R.string.about_license_title),
+                    description = stringResource(R.string.about_license_desc),
+                    onClick = { onOpenUrl(URL_LICENSE) }
+                )
+                SettingNavRow(
+                    title = stringResource(R.string.about_privacy_title),
+                    description = stringResource(R.string.about_privacy_desc),
+                    onClick = { onOpenUrl(URL_PRIVACY) }
                 )
             }
 
@@ -427,7 +466,8 @@ private fun ParentSettingsPreview() {
             onAllowlistClick = {},
             onTimelineClick = {},
             onBatteryAllow = {},
-            onOpenVpnSettings = {}
+            onOpenVpnSettings = {},
+            onOpenUrl = {}
         )
     }
 }

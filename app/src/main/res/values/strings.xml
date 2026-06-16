@@ -106,4 +106,14 @@
     <string name="timeline_duration_hours">%1$d h %2$d min</string>
     <string name="timeline_duration_minutes">%1$d min</string>
     <string name="timeline_duration_under_minute">under a minute</string>
+
+    <!-- About / open source: AGPL-3.0 source offer + privacy policy, surfaced to the parent -->
+    <string name="settings_section_about">About</string>
+    <string name="about_blurb">Calyptra is free software, licensed under the GNU AGPL-3.0.</string>
+    <string name="about_source_title">Source code</string>
+    <string name="about_source_desc">View Calyptra on GitHub</string>
+    <string name="about_license_title">License</string>
+    <string name="about_license_desc">GNU AGPL-3.0</string>
+    <string name="about_privacy_title">Privacy policy</string>
+    <string name="about_privacy_desc">How Calyptra handles data</string>
 </resources>

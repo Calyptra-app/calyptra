@@ -70,9 +70,19 @@ itself is never committed.
 
 ## Privacy
 
-Calyptra collects nothing. There are no analytics, no crash reporting, no
-accounts, and no network calls except (optionally) downloading an updated
-blocklist. All blocking decisions are made locally on the device.
+Filtering happens **on the device**. We run no servers and keep no accounts;
+there are no analytics, no crash reporting, and no telemetry, so we receive no
+personal data. Blocking decisions are made locally.
+
+Two things do leave the phone, and we're upfront about them: Calyptra
+periodically **downloads an updated blocklist** (over HTTPS from GitHub), and —
+like any internet connection — it **forwards DNS lookups for allowed sites** to
+family-safe DNS resolvers (Cloudflare for Families and CleanBrowsing), which can
+see that query stream. Calyptra does not keep a browsing or domain log.
+
+See [`PRIVACY.md`](./PRIVACY.md) for the full, GDPR-style privacy policy
+(including children's-data and permissions detail), and [`SECURITY.md`](./SECURITY.md)
+for how to report a vulnerability.
 
 ## License
 

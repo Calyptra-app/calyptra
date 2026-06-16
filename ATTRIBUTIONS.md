@@ -51,13 +51,15 @@ The bundled snapshot is sampled from the upstream
 `wildcard/tif.mini-onlydomains.txt` export so malware/phishing protection works
 before the first network fetch. The combined data is distributed under
 **GPL-3.0**; if you redistribute it you must preserve this attribution and the
-GPL-3.0 terms.
+GPL-3.0 terms. A copy of the GPL-3.0 license text is included at
+[`licenses/GPL-3.0.txt`](./licenses/GPL-3.0.txt).
 
 **Combined-work licensing.** Because the bundled list incorporates GPL-3.0
 material (HaGeZi), the combined blocklist data is distributed under the
 **GPL-3.0**. AGPL-3.0 (the app) and GPL-3.0 (the data) are compatible for
 distribution together. If you redistribute the blocklist, you must preserve
-this attribution and the GPL-3.0 terms.
+this attribution and the GPL-3.0 terms. A copy of the GPL-3.0 license text is
+included at [`licenses/GPL-3.0.txt`](./licenses/GPL-3.0.txt).
 
 ### Runtime updates
 
@@ -85,6 +87,8 @@ The bundled snapshot is taken from the upstream `wildcard/nsfw-onlydomains.txt`
 export (plain one-domain-per-line). There is no runtime updater for this list;
 it is shipped offline only. The combined data is distributed under **GPL-3.0**;
 if you redistribute it you must preserve this attribution and the GPL-3.0 terms.
+A copy of the GPL-3.0 license text is included at
+[`licenses/GPL-3.0.txt`](./licenses/GPL-3.0.txt).
 
 **Combined-work licensing.** As with the threat list, because this bundled list
 incorporates GPL-3.0 material (HaGeZi), the combined data is distributed under
@@ -95,10 +99,12 @@ together.
 
 ## Third-party libraries
 
-Calyptra depends on the following, all under the **Apache License 2.0**:
+The runtime/shipped dependencies bundled into the release APK are all under the
+**Apache License 2.0**:
 
 - AndroidX (core, lifecycle, navigation, activity-compose) — The Android Open Source Project
 - Jetpack Compose & Material 3 — The Android Open Source Project
+- Material Components for Android (`com.google.android.material:material`) — The Android Open Source Project
 - Room (persistence) — The Android Open Source Project
 - DataStore (preferences) — The Android Open Source Project
 - WorkManager — The Android Open Source Project
@@ -106,3 +112,34 @@ Calyptra depends on the following, all under the **Apache License 2.0**:
 
 Their license texts are reproduced with each dependency in the build artifacts
 and are available from their respective projects.
+
+**Test-only dependencies.** The project additionally uses some test-only
+dependencies that are **not** distributed in the release APK: `junit:junit`
+(**EPL-1.0**) and its transitive Hamcrest dependency (**BSD-3-Clause**). These
+run only during local/instrumented testing and never ship to end users.
+
+---
+
+## Bundled web fonts (landing site)
+
+The landing site (`site/`) self-hosts its web fonts via the `@fontsource`
+packages instead of loading them from Google's CDN, so the published site
+**redistributes** the font files. They are licensed under the **SIL Open Font
+License, Version 1.1 (OFL-1.1)**:
+
+| Font | Author | Upstream |
+|------|--------|----------|
+| Outfit | The Outfit Project Authors | https://github.com/Outfitio/Outfit-Fonts |
+| Plus Jakarta Sans | The Plus Jakarta Sans Project Authors | https://github.com/tokotype/PlusJakartaSans |
+| IBM Plex Mono | IBM Corp. | https://github.com/IBM/plex |
+
+The full OFL-1.1 license text and copyright notices ship with the site at
+[`site/public/OFL.txt`](site/public/OFL.txt) (served at `/OFL.txt`).
+
+---
+
+## Trademarks
+
+All product names, logos, and brands are property of their respective owners;
+they are named only to describe filtering behavior, and no affiliation or
+endorsement is implied.

@@ -62,8 +62,8 @@ export default function HowItWorks() {
                     <h3 className="font-outfit font-bold text-4xl md:text-6xl lg:text-7xl text-navy mb-8 tracking-tight">Install the app.</h3>
                     <p className="font-sans text-lg md:text-xl text-ink/65 leading-relaxed font-light">
                         Download Calyptra and open it. There is no sign-up and no Play Store
-                        account. The only permission it ever asks for is the one it needs to
-                        block ads.
+                        account. It asks only for the permissions it needs to filter traffic
+                        on the device — no account and no personal data.
                     </p>
                 </div>
             </div>

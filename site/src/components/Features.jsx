@@ -69,7 +69,7 @@ function BlocksEverywhere() {
                 <h3 className="font-outfit font-bold text-2xl text-navy mb-2">Blocks ads in every app, not just the browser.</h3>
                 <p className="font-sans text-ink/65 text-sm leading-relaxed max-w-md">
                     Games, free apps, videos: Calyptra filters them all from one place.
-                    No setup for each app, and no ads sneaking through.
+                    No setup for each app, and far fewer ads getting through.
                 </p>
             </div>
         </article>
@@ -111,8 +111,8 @@ function PrivacyLedger() {
             <div className="relative z-10 pt-5 border-t border-navy/5 mt-2">
                 <h3 className="font-outfit font-bold text-2xl text-navy mb-2">We never watch your child.</h3>
                 <p className="font-sans text-ink/65 text-sm leading-relaxed">
-                    No accounts, no analytics, no logs. Calyptra can&rsquo;t see what your child
-                    does, and neither can we.
+                    No accounts, no analytics, no logs. Calyptra keeps no record of what your
+                    child does, and sends us nothing.
                 </p>
             </div>
         </article>
@@ -187,7 +187,7 @@ function SafeSearchControl() {
                 <h3 className="font-outfit font-bold text-2xl text-navy mb-2">Safe results, by default.</h3>
                 <p className="font-sans text-ink/65 text-sm leading-relaxed max-w-lg">
                     Calyptra forces SafeSearch on Google, Bing and DuckDuckGo, so explicit results
-                    are filtered out. YouTube opens in Restricted Mode, set to strict.
+                    are filtered where the search engine supports it. YouTube opens in Restricted Mode, set to strict.
                 </p>
             </div>
         </article>
@@ -225,7 +225,7 @@ function DangerousSites() {
                 </p>
             </div>
             <div className="relative z-10 pt-5 border-t border-navy/5">
-                <h3 className="font-outfit font-bold text-2xl text-navy mb-2">Blocks scams, malware, and adult sites.</h3>
+                <h3 className="font-outfit font-bold text-2xl text-navy mb-2">Helps block scams, malware, and adult sites.</h3>
                 <p className="font-sans text-ink/65 text-sm leading-relaxed max-w-lg">
                     Calyptra checks every site against trusted malware, phishing, and adult-content
                     lists. Malware and scams are blocked automatically. Adult content is one switch
@@ -333,6 +333,11 @@ export default function Features() {
                     <div className="feature-card-wrapper md:col-span-1 min-h-[460px]"><SafeSearchControl /></div>
                     <div className="feature-card-wrapper md:col-span-2"><KidParentBanner /></div>
                 </div>
+
+                <p className="font-sans text-xs text-ink/45 mt-12 max-w-2xl mx-auto text-center leading-relaxed">
+                    Calyptra uses domain blocklists, which reduce but cannot eliminate exposure to
+                    ads, trackers, or harmful sites. It is not a substitute for parental supervision.
+                </p>
             </div>
         </section>
     );
