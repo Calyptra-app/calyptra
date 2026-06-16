@@ -1,16 +1,14 @@
-<!-- TODO: confirm privacy@pointblank.gr / security@pointblank.gr are monitored mailboxes, or replace with the preferred contact. -->
-
 # Security Policy
 
-Calyptra is maintained by **Point Blank Co-op** (Greece). We take the security of
-an app that runs on children's devices seriously and welcome responsible
-disclosure.
+Calyptra is maintained by its open-source contributors (the **Calyptra
+maintainers**). We take the security of an app that runs on children's devices
+seriously and welcome responsible disclosure.
 
 ## Reporting a vulnerability
 
-**Please report security issues privately by email:**
+**Please report security issues privately through GitHub Security Advisories:**
 
-- **security@pointblank.gr**
+- <https://github.com/Calyptra-app/calyptra/security/advisories/new>
 
 Do **not** open a public GitHub issue, pull request, or discussion for a
 suspected vulnerability, and please do not disclose it publicly until we have had
@@ -30,7 +28,7 @@ When reporting, it helps to include:
 - We will credit reporters who wish to be credited once a fix is released
   (please let us know your preference).
 
-These are good-faith targets from a small cooperative, not a contractual SLA.
+These are good-faith targets from a small volunteer project, not a contractual SLA.
 
 ## Scope
 
@@ -68,4 +66,5 @@ and how it handles data — can be independently audited.
 ## Privacy
 
 For how the app handles data, see [`PRIVACY.md`](./PRIVACY.md). Privacy questions
-(as opposed to security vulnerabilities) can go to **privacy@pointblank.gr**.
+(as opposed to security vulnerabilities) can be raised as a normal GitHub issue:
+<https://github.com/Calyptra-app/calyptra/issues>.

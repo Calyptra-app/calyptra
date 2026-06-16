@@ -8,7 +8,7 @@ if you believe an attribution is missing or incorrect, please open an issue.
 
 ## Calyptra itself
 
-Copyright (C) 2026 Point Blank Co-op and the Calyptra contributors.
+Copyright (C) 2026 the Calyptra contributors.
 
 Calyptra is free software, licensed under the **GNU Affero General Public
 License v3.0** (AGPL-3.0). See [`LICENSE`](./LICENSE) for the full text.
