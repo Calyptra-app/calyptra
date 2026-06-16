@@ -27,6 +27,7 @@ class PreferencesRepository(private val context: Context) : PinStore {
     private val YOUTUBE_RESTRICT_LEVEL = stringPreferencesKey("youtube_restrict_level")
     private val BATTERY_PROMPT_SHOWN = booleanPreferencesKey("battery_prompt_shown")
     private val BLOCKED_CATEGORIES = stringSetPreferencesKey("blocked_categories")
+    private val ALLOWED_DOMAINS = stringSetPreferencesKey("allowed_domains")
     private val YIELDED_TO_OTHER_VPN = booleanPreferencesKey("yielded_to_other_vpn")
     private val PIN_HASH = stringPreferencesKey("pin_hash")
     private val PIN_SALT = stringPreferencesKey("pin_salt")
@@ -90,6 +91,31 @@ class PreferencesRepository(private val context: Context) : PinStore {
         context.dataStore.edit { preferences ->
             val current = preferences[BLOCKED_CATEGORIES] ?: emptySet()
             preferences[BLOCKED_CATEGORIES] = if (blocked) current + key else current - key
+        }
+    }
+
+    /** Parent allowlist of domains that must always resolve, even if they land on
+     *  a threat/ad/category list (the false-positive escape hatch). Stored
+     *  trimmed + lowercased; subdomain matching is applied at resolve time. */
+    val allowedDomains: Flow<Set<String>> = context.dataStore.data
+        .map { preferences ->
+            preferences[ALLOWED_DOMAINS] ?: emptySet()
+        }
+
+    suspend fun addAllowedDomain(domain: String) {
+        val normalized = domain.trim().lowercase()
+        if (normalized.isEmpty()) return
+        context.dataStore.edit { preferences ->
+            val current = preferences[ALLOWED_DOMAINS] ?: emptySet()
+            preferences[ALLOWED_DOMAINS] = current + normalized
+        }
+    }
+
+    suspend fun removeAllowedDomain(domain: String) {
+        val normalized = domain.trim().lowercase()
+        context.dataStore.edit { preferences ->
+            val current = preferences[ALLOWED_DOMAINS] ?: emptySet()
+            preferences[ALLOWED_DOMAINS] = current - normalized
         }
     }
 

@@ -1,0 +1,114 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-cream text-ink font-sans antialiased overflow-x-hidden;
+  }
+
+  /* Respect users who prefer reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  /* Visible focus ring for keyboard users */
+  :focus-visible {
+    outline: 2px solid #E5734A;
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+}
+
+/* ----------------------------------------------------------------------- */
+/* Global film-grain overlay                                               */
+/* ----------------------------------------------------------------------- */
+.noise-overlay {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 9999;
+  opacity: 0.04;
+  background: white;
+  filter: url(#noiseFilter);
+  mix-blend-mode: overlay;
+}
+
+/* ----------------------------------------------------------------------- */
+/* Buttons                                                                 */
+/* ----------------------------------------------------------------------- */
+.magnetic-btn {
+  @apply relative overflow-hidden inline-flex items-center justify-center transition-all duration-300;
+  transition-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.magnetic-btn:hover {
+  transform: translateY(-2px) scale(1.02);
+}
+
+.magnetic-btn .hover-bg {
+  @apply absolute inset-0 opacity-0 transition-opacity duration-300 pointer-events-none;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.magnetic-btn:hover .hover-bg {
+  @apply opacity-100;
+}
+
+.hover-lift {
+  @apply transition-transform duration-300;
+}
+
+.hover-lift:hover {
+  transform: translateY(-2px);
+}
+
+/* ----------------------------------------------------------------------- */
+/* Background textures                                                     */
+/* ----------------------------------------------------------------------- */
+.bg-grid {
+  background-size: 32px 32px;
+  background-image:
+    linear-gradient(to right, rgba(7, 20, 97, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(7, 20, 97, 0.05) 1px, transparent 1px);
+}
+
+.bg-grid-dark {
+  background-size: 32px 32px;
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+}
+
+.bg-dots {
+  background-image: radial-gradient(rgba(7, 20, 97, 0.10) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+/* Organic "calyptra" pod shape — echoes the emblem silhouette */
+.pod-shape {
+  border-radius: 64% 36% 62% 38% / 58% 56% 44% 42%;
+}
+
+.pod-shape-alt {
+  border-radius: 42% 58% 38% 62% / 44% 42% 58% 56%;
+}
+
+/* Soft tinted elevation behind hero artwork (no neon glow) */
+.glow-coral {
+  box-shadow: 0 24px 70px -30px rgba(7, 20, 97, 0.55);
+}

@@ -12,6 +12,9 @@ enum class GatedAction {
     YOUTUBE_LEVEL,
     WHITELIST,
     CATEGORIES,
+    /** Opening the per-domain allowlist (the false-positive escape hatch).
+     *  Same PIN policy as the other protection-reducing actions (PIN-L3). */
+    DOMAIN_ALLOWLIST,
     /** Entering the parent settings screen (F12). The grace session opened on
      *  success makes the gated toggles inside proceed without re-prompting. */
     PARENT_SETTINGS,

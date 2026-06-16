@@ -60,6 +60,7 @@ fun ParentSettingsScreen(
     viewModel: MainViewModel,
     onBack: () -> Unit,
     onNavigateToWhitelist: () -> Unit,
+    onNavigateToAllowlist: () -> Unit,
     onNavigateToTimeline: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -94,8 +95,17 @@ fun ParentSettingsScreen(
         onCategoryToggle = { category, blocked ->
             viewModel.requirePin(GatedAction.CATEGORIES) { viewModel.setCategoryBlocked(category, blocked) }
         },
+        onNsfwToggle = { blocked ->
+            // Adult content reuses the CATEGORIES gate — same PIN policy (PIN-L3).
+            viewModel.requirePin(GatedAction.CATEGORIES) {
+                viewModel.setCategoryBlocked(SocialCategory.NSFW, blocked)
+            }
+        },
         onWhitelistClick = {
             viewModel.requirePin(GatedAction.WHITELIST) { onNavigateToWhitelist() }
+        },
+        onAllowlistClick = {
+            viewModel.requirePin(GatedAction.DOMAIN_ALLOWLIST) { onNavigateToAllowlist() }
         },
         // Read-only history — the gated settings door already covered it (FR-13.4).
         onTimelineClick = onNavigateToTimeline,
@@ -114,7 +124,9 @@ fun ParentSettingsContent(
     onSafeSearchChange: (Boolean) -> Unit,
     onYoutubeLevelChange: (String) -> Unit,
     onCategoryToggle: (SocialCategory, Boolean) -> Unit,
+    onNsfwToggle: (Boolean) -> Unit,
     onWhitelistClick: () -> Unit,
+    onAllowlistClick: () -> Unit,
     onTimelineClick: () -> Unit,
     onBatteryAllow: () -> Unit,
     onOpenVpnSettings: () -> Unit,
@@ -161,6 +173,15 @@ fun ParentSettingsContent(
                     checked = uiState.safeSearchEnabled,
                     enabled = uiState.isProtectionEnabled,
                     onCheckedChange = onSafeSearchChange
+                )
+                // Adult content (NSFW) — default OFF, its own labeled row rather
+                // than a chip in the social grid (F11 / Phase 2).
+                SettingSwitchRow(
+                    title = stringResource(R.string.nsfw_category_title),
+                    description = stringResource(R.string.nsfw_category_description),
+                    checked = SocialCategory.NSFW.key in uiState.blockedCategories,
+                    enabled = uiState.isProtectionEnabled,
+                    onCheckedChange = onNsfwToggle
                 )
 
                 Column {
@@ -233,6 +254,15 @@ fun ParentSettingsContent(
                     title = stringResource(R.string.whitelist_title),
                     description = stringResource(R.string.whitelist_row_desc),
                     onClick = onWhitelistClick
+                )
+            }
+
+            // Per-domain allowlist — the false-positive escape hatch (Phase 2).
+            SettingsCard {
+                SettingNavRow(
+                    title = stringResource(R.string.allowlist_title),
+                    description = stringResource(R.string.allowlist_row_desc),
+                    onClick = onAllowlistClick
                 )
             }
 
@@ -392,7 +422,9 @@ private fun ParentSettingsPreview() {
             onSafeSearchChange = {},
             onYoutubeLevelChange = {},
             onCategoryToggle = { _, _ -> },
+            onNsfwToggle = {},
             onWhitelistClick = {},
+            onAllowlistClick = {},
             onTimelineClick = {},
             onBatteryAllow = {},
             onOpenVpnSettings = {}

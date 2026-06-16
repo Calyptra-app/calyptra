@@ -25,11 +25,17 @@ class SocialCategoryTest {
     }
 
     @Test
-    fun `expected eight categories exist with stable keys`() {
+    fun `expected categories exist with stable keys`() {
         val expected = setOf(
             "tiktok", "instagram", "snapchat", "facebook",
-            "twitter", "reddit", "discord", "twitch"
+            "twitter", "reddit", "discord", "twitch", "nsfw"
         )
         assertEquals(expected, SocialCategory.entries.map { it.key }.toSet())
+    }
+
+    @Test
+    fun `nsfw category roundtrips and is a known key`() {
+        assertEquals(SocialCategory.NSFW, SocialCategory.fromKey("nsfw"))
+        assertEquals(setOf(SocialCategory.NSFW), SocialCategory.fromKeys(setOf("nsfw", "garbage")))
     }
 }

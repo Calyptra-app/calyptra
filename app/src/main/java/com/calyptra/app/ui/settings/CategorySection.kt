@@ -31,7 +31,8 @@ private val DISPLAY_NAMES = mapOf(
 /** "App Blocking" settings section (SOC-L4). Toggle changes are PIN-gated by
  *  the caller (FR-11.5); switches only report intent here. The hosting card
  *  renders the section title (F12); this composable keeps the description and
- *  the per-category switch rows. */
+ *  the per-category switch rows. NSFW is deliberately excluded here — it is the
+ *  adult-content category and is surfaced as its own "Adult content" toggle. */
 @Composable
 fun CategorySection(
     blockedCategories: Set<String>,
@@ -47,6 +48,7 @@ fun CategorySection(
         )
 
         for (category in SocialCategory.entries) {
+            if (category == SocialCategory.NSFW) continue
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
