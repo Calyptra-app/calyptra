@@ -75,12 +75,12 @@ export default function AppShowcase() {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 md:gap-10 max-w-4xl mx-auto">
                     {SHOTS.map((shot) => (
                         <figure key={shot.src} className={`shot-frame ${shot.offset}`}>
-                            <div className="rounded-[2rem] bg-ink p-2 shadow-[0_40px_80px_-40px_rgba(7,20,97,0.5)] border border-navy/10">
+                            <div className="rounded-4xl bg-ink p-2 shadow-[0_40px_80px_-40px_rgba(7,20,97,0.5)] border border-navy/10">
                                 <img
                                     src={shot.src}
                                     alt={shot.alt}
                                     loading="lazy"
-                                    className="rounded-[1.5rem] w-full block"
+                                    className="rounded-3xl w-full block"
                                 />
                             </div>
                             <figcaption className="mt-5 font-sans text-sm text-ink/60 leading-relaxed text-center max-w-[34ch] mx-auto">

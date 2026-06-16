@@ -42,7 +42,7 @@ export default function Philosophy() {
         >
             {/* Quiet organic background */}
             <div className="absolute inset-0 bg-grid-dark opacity-40 pointer-events-none"></div>
-            <div className="parallax-pod absolute -right-40 top-1/2 -translate-y-1/2 w-[34rem] h-[40rem] bg-navy-700/20 blur-[100px] pod-shape pointer-events-none"></div>
+            <div className="parallax-pod absolute -right-40 top-1/2 -translate-y-1/2 w-136 h-160 bg-navy-700/20 blur-[100px] pod-shape pointer-events-none"></div>
 
             <div className="max-w-7xl mx-auto z-10 w-full">
                 <div className="max-w-3xl">

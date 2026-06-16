@@ -9,7 +9,7 @@ export default function Logo({ size = 36, className = '' }) {
             width={size}
             height={size}
             alt="Calyptra"
-            className={`rounded-[28%] shadow-sm ${className}`}
+            className={`rounded-[28%] shadow-xs ${className}`}
             style={{ width: size, height: size }}
         />
     );

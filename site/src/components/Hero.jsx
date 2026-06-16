@@ -34,11 +34,11 @@ export default function Hero() {
         <section
             id="top"
             ref={containerRef}
-            className="relative w-full min-h-[100dvh] flex items-center overflow-hidden bg-navy text-white pt-32 pb-20 md:pt-28 md:pb-24 px-6 md:px-12 lg:px-24"
+            className="relative w-full min-h-dvh flex items-center overflow-hidden bg-navy text-white pt-32 pb-20 md:pt-28 md:pb-24 px-6 md:px-12 lg:px-24"
         >
             {/* Background layers */}
             <div className="absolute inset-0 bg-grid-dark opacity-60"></div>
-            <div className="absolute -bottom-52 right-0 w-[44rem] h-[44rem] bg-navy-700/40 blur-[120px] rounded-full pointer-events-none"></div>
+            <div className="absolute -bottom-52 right-0 w-176 h-176 bg-navy-700/40 blur-[120px] rounded-full pointer-events-none"></div>
 
             <div className="relative z-10 w-full max-w-7xl mx-auto grid lg:grid-cols-[1.15fr_0.85fr] gap-12 lg:gap-8 items-center">
                 {/* Copy */}
@@ -84,7 +84,7 @@ export default function Hero() {
 
                 {/* Emblem artwork */}
                 <div className="hero-art relative hidden lg:flex items-center justify-center">
-                    <div className="relative w-[26rem] h-[26rem] flex items-center justify-center">
+                    <div className="relative w-104 h-104 flex items-center justify-center">
                         {/* Static concentric rings echoing the icon */}
                         <svg className="absolute inset-0 w-full h-full" viewBox="0 0 400 400" fill="none" aria-hidden="true">
                             <circle cx="200" cy="200" r="190" stroke="rgba(255,255,255,0.10)" strokeWidth="1" />
