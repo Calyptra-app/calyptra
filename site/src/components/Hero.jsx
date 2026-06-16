@@ -58,8 +58,8 @@ export default function Hero() {
 
                     <p className="hero-anim font-outfit font-light text-lg md:text-xl lg:text-2xl text-white/75 leading-relaxed max-w-xl mb-10">
                         Calyptra blocks ads and trackers right on your child&rsquo;s phone.
-                        Nothing leaves the device.{' '}
-                        <span className="text-white/95 font-normal">No one sees what they do.</span>
+                        Filtering happens on the device.{' '}
+                        <span className="text-white/95 font-normal">Their activity stays on their phone.</span>
                     </p>
 
                     <div className="hero-anim flex flex-col sm:flex-row items-stretch sm:items-center gap-4">

@@ -16,7 +16,7 @@ const QUESTIONS = [
     },
     {
         q: 'Can you see what my child does online?',
-        a: 'No. There are no accounts and no logs. Nothing about your child’s activity ever leaves their phone.',
+        a: 'No. There are no accounts and no logs, and Calyptra sends us nothing about your child. Filtering decisions are made on the phone; only ordinary name lookups for the sites they visit reach the public DNS resolvers, exactly as they would on any connection.',
     },
     {
         q: 'Is it really free?',

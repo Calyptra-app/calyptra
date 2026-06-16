@@ -108,4 +108,14 @@
     <string name="timeline_duration_hours">%1$d ώ. %2$d λεπ.</string>
     <string name="timeline_duration_minutes">%1$d λεπ.</string>
     <string name="timeline_duration_under_minute">λιγότερο από ένα λεπτό</string>
+
+    <!-- About / open source (formal — addressed to the parent) -->
+    <string name="settings_section_about">Σχετικά</string>
+    <string name="about_blurb">Το Calyptra είναι ελεύθερο λογισμικό, με άδεια χρήσης GNU AGPL-3.0.</string>
+    <string name="about_source_title">Πηγαίος κώδικας</string>
+    <string name="about_source_desc">Δείτε το Calyptra στο GitHub</string>
+    <string name="about_license_title">Άδεια χρήσης</string>
+    <string name="about_license_desc">GNU AGPL-3.0</string>
+    <string name="about_privacy_title">Πολιτική απορρήτου</string>
+    <string name="about_privacy_desc">Πώς το Calyptra διαχειρίζεται δεδομένα</string>
 </resources>
