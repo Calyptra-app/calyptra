@@ -23,7 +23,10 @@ class BootReceiver : BroadcastReceiver() {
         val pendingResult = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                if (app.preferencesRepository.protectionEnabled.first()) {
+                // Don't resurrect protection if we yielded the VPN slot to another
+                // VPN — auto-starting on boot would kill it again (CFT-L1).
+                val yielded = app.preferencesRepository.yieldedToOtherVpn.first()
+                if (app.preferencesRepository.protectionEnabled.first() && !yielded) {
                     VpnController.startVpn(context)
                     app.protectionEventRepository.log(ProtectionEventType.ENABLED_BOOT)
                 }

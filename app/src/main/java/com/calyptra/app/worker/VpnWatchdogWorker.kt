@@ -26,9 +26,19 @@ enum class WatchdogAction { NONE, RESTART_VPN, ALERT_PERMISSION_LOST }
 /** Pure decision table for the watchdog (PWR-L2) — see F9 spec. */
 object VpnWatchdogPolicy {
 
-    fun decide(protectionEnabled: Boolean, vpnRunning: Boolean, permissionHeld: Boolean): WatchdogAction =
+    fun decide(
+        protectionEnabled: Boolean,
+        vpnRunning: Boolean,
+        permissionHeld: Boolean,
+        yieldedToOtherVpn: Boolean = false
+    ): WatchdogAction =
         when {
             !protectionEnabled -> WatchdogAction.NONE
+            // Another VPN (e.g. Tailscale) deliberately took the single VPN slot
+            // via onRevoke. Do NOT fight back by re-establishing — that would kill
+            // the other VPN. The parent was already alerted; they re-enable us
+            // explicitly when they want protection back (CFT-L1).
+            yieldedToOtherVpn -> WatchdogAction.NONE
             vpnRunning -> WatchdogAction.NONE
             permissionHeld -> WatchdogAction.RESTART_VPN
             else -> WatchdogAction.ALERT_PERMISSION_LOST
@@ -47,7 +57,10 @@ class VpnWatchdogWorker(
         val action = VpnWatchdogPolicy.decide(
             protectionEnabled = app.preferencesRepository.protectionEnabled.first(),
             vpnRunning = VpnController.isRunning.value,
-            permissionHeld = VpnService.prepare(applicationContext) == null
+            permissionHeld = VpnService.prepare(applicationContext) == null,
+            // Persisted so the yield survives process death (in-memory state
+            // would reset to Stopped and we'd restart, killing the other VPN).
+            yieldedToOtherVpn = app.preferencesRepository.yieldedToOtherVpn.first()
         )
         val events = app.protectionEventRepository
         when (action) {

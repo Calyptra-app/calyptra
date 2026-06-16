@@ -14,6 +14,8 @@ import com.calyptra.app.worker.VpnWatchdogScheduler
 import com.calyptra.app.worker.VpnWatchdogWorker
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.net.DatagramPacket
@@ -25,7 +27,17 @@ class AdBlockVpnService : VpnService() {
 
     private var vpnInterface: ParcelFileDescriptor? = null
     private var job: Job? = null
+    private var packetJob: Job? = null
+    private var reconfigureJob: Job? = null
     private var scope: CoroutineScope? = null
+
+    /** Serializes reconfigure requests so two establish()/swap sequences can't
+     *  interleave and leave a stale interface installed. */
+    private val reconfigureMutex = Mutex()
+    /** Guards the interface swap/teardown so the synchronous stop path and the
+     *  async reconfigure path can't race on vpnInterface/packetJob. */
+    private val tunnelLock = Any()
+    @Volatile private var stopping = false
     
     private val blocklistManager by lazy { (applicationContext as CalyptraApp).blocklistManager }
     private val categoryBlockManager by lazy { (applicationContext as CalyptraApp).categoryBlockManager }
@@ -49,9 +61,17 @@ class AdBlockVpnService : VpnService() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
-            stopVpn()
-            return START_NOT_STICKY
+        when (intent?.action) {
+            ACTION_STOP -> {
+                stopVpn()
+                return START_NOT_STICKY
+            }
+            ACTION_RECONFIGURE -> {
+                // Per-app routing changed (e.g. a whitelist toggle). Rebuild the
+                // live tunnel in place so it applies without cycling protection.
+                reconfigure()
+                return START_STICKY
+            }
         }
 
         if (intent == null) {
@@ -71,6 +91,7 @@ class AdBlockVpnService : VpnService() {
     private fun startVpn() {
         job = scope?.launch {
             try {
+                stopping = false
                 val app = applicationContext as CalyptraApp
                 val isEnabled = app.preferencesRepository.protectionEnabled.first()
                 if (!isEnabled) {
@@ -106,40 +127,108 @@ class AdBlockVpnService : VpnService() {
                     }
                 }
 
-                val builder = Builder()
-                    .setSession("Calyptra")
-                    .addAddress("10.0.0.2", 32)
-                    .addDnsServer("10.0.0.1")
-                    .addRoute("10.0.0.1", 32)
-                    .setBlocking(false)
-                
-                // Add whitelisted apps
-                val whitelistedPackages = (applicationContext as CalyptraApp).database.whitelistDao().getAllPackageNames()
-                for (pkg in whitelistedPackages) {
-                    try {
-                        builder.addDisallowedApplication(pkg)
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Failed to whitelist $pkg", e)
+                val tun = buildTunnel(app)
+                when {
+                    tun == null -> handleStartFailure(null)
+                    installTunnel(tun) -> {
+                        restartGuard.reset()
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                            VpnController.updateAlwaysOn(isAlwaysOn)
+                        }
+                        // Re-check protection state on connectivity transitions (PWR-L4).
+                        app.networkMonitor.startWatching {
+                            VpnWatchdogScheduler.checkNow(applicationContext)
+                        }
                     }
-                }
-                
-                vpnInterface = builder.establish()
-
-                if (vpnInterface != null) {
-                    restartGuard.reset()
-                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                        VpnController.updateAlwaysOn(isAlwaysOn)
-                    }
-                    // Re-check protection state on connectivity transitions (PWR-L4).
-                    app.networkMonitor.startWatching {
-                        VpnWatchdogScheduler.checkNow(applicationContext)
-                    }
-                    processPackets(vpnInterface!!)
-                } else {
-                    handleStartFailure(null)
+                    // installTunnel == false: service is tearing down; it already
+                    // closed the new interface — nothing more to do.
                 }
             } catch (e: Exception) {
                 handleStartFailure(e)
+            }
+        }
+    }
+
+    /** Atomically swaps in [tun] as the live interface and starts its packet
+     *  loop, cancelling and closing any previous one. Returns false (and closes
+     *  [tun]) if the service is tearing down, so a late establish can't reinstall
+     *  protection after stop. Safe for both the initial start (no previous) and
+     *  reconfigure. */
+    private fun installTunnel(tun: ParcelFileDescriptor): Boolean = synchronized(tunnelLock) {
+        if (stopping) {
+            tun.close()
+            return false
+        }
+        val oldInterface = vpnInterface
+        val oldLoop = packetJob
+        // Bring the new tunnel up before tearing the old one down (no gap).
+        vpnInterface = tun
+        startPacketLoop(tun)
+        // Cancel (don't join) then close, so the old loop's blocking read is
+        // unblocked by the close rather than deadlocking a join (PWR-L1).
+        oldLoop?.cancel()
+        oldInterface?.close()
+        true
+    }
+
+    /** Builds the tun interface from the current config. Two sets of apps are
+     *  excluded from the DNS route via addDisallowedApplication:
+     *   - SYSTEM_EXCLUDED_PACKAGES: system/automotive apps whose connectivity
+     *     checks (notably Android Auto) must never see filtered/slow DNS.
+     *   - parent-whitelisted apps (WL-L1).
+     *  These rules bake in at establish() time, so changing the whitelist needs
+     *  a fresh interface — see reconfigure(). */
+    private suspend fun buildTunnel(app: CalyptraApp): ParcelFileDescriptor? {
+        val builder = Builder()
+            .setSession("Calyptra")
+            .addAddress("10.0.0.2", 32)
+            .addDnsServer("10.0.0.1")
+            .addRoute("10.0.0.1", 32)
+            .setBlocking(false)
+
+        for (pkg in SYSTEM_EXCLUDED_PACKAGES) {
+            try {
+                builder.addDisallowedApplication(pkg)
+            } catch (e: Exception) {
+                // Package not installed on this device — nothing to exclude.
+            }
+        }
+
+        val whitelistedPackages = app.database.whitelistDao().getAllPackageNames()
+        for (pkg in whitelistedPackages) {
+            try {
+                builder.addDisallowedApplication(pkg)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to whitelist $pkg", e)
+            }
+        }
+
+        return builder.establish()
+    }
+
+    private fun startPacketLoop(tun: ParcelFileDescriptor) {
+        packetJob = scope?.launch { processPackets(tun) }
+    }
+
+    /** Rebuilds the live tunnel in place after a per-app routing change, without
+     *  tearing the service down (no protection gap, no notification churn).
+     *  Serialized via reconfigureMutex; the swap itself is done by installTunnel. */
+    private fun reconfigure() {
+        reconfigureJob = scope?.launch {
+            reconfigureMutex.withLock {
+                // No-op if the tunnel isn't up yet (startVpn still establishing —
+                // it will read the latest whitelist) or is already gone. Must not
+                // stopSelf here, or a toggle during startup would abort the start.
+                if (vpnInterface == null || stopping) return@withLock
+                try {
+                    val app = applicationContext as CalyptraApp
+                    val newTun = buildTunnel(app) ?: return@withLock
+                    if (installTunnel(newTun)) {
+                        Log.i(TAG, "Tunnel reconfigured (per-app routing updated)")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Reconfigure failed", e)
+                }
             }
         }
     }
@@ -162,13 +251,16 @@ class AdBlockVpnService : VpnService() {
         stopSelf()
     }
 
-    private suspend fun processPackets(vpnInterface: ParcelFileDescriptor) {
+    // coroutineScope ties the per-query handlers below to this loop's job, so
+    // cancelling packetJob also cancels in-flight handlers before the old
+    // descriptor is closed during reconfigure/stop.
+    private suspend fun processPackets(vpnInterface: ParcelFileDescriptor) = coroutineScope {
         val inputStream = FileInputStream(vpnInterface.fileDescriptor)
         val outputStream = FileOutputStream(vpnInterface.fileDescriptor)
         val buffer = ByteBuffer.allocate(32767)
-        
+
         try {
-            while (currentCoroutineContext().isActive) {
+            while (isActive) {
                 val length = withContext(Dispatchers.IO) {
                     inputStream.read(buffer.array())
                 }
@@ -191,7 +283,7 @@ class AdBlockVpnService : VpnService() {
                     val dstPort = ((packetBuffer.get(headerLength + 2).toInt() and 0xFF) shl 8) or (packetBuffer.get(headerLength + 3).toInt() and 0xFF)
 
                     if (dstPort == 53) {
-                        scope?.launch {
+                        launch {
                             handleDnsRequest(packetBuffer, headerLength, outputStream)
                         }
                     }
@@ -208,46 +300,62 @@ class AdBlockVpnService : VpnService() {
         ipHeaderLength: Int, 
         outputStream: FileOutputStream
     ) {
-        val payloadOffset = ipHeaderLength + 8
-        requestPacket.position(payloadOffset)
-        val dnsPacket = requestPacket.slice()
-        
-        val response = dnsInterceptor.processDnsPacket(dnsPacket)
-        
-        if (response != null) {
-            Log.d(TAG, "Blocked DNS query")
-            val fullResponse = constructIpUdpResponse(requestPacket, response, ipHeaderLength)
-            withContext(Dispatchers.IO) {
-                synchronized(outputStream) {
-                    outputStream.write(fullResponse)
-                }
-            }
-            statsRepository.incrementCount()
-            return
-        }
-
-        // Allowed. Forward to upstream with timeout.
         try {
+            val payloadOffset = ipHeaderLength + 8
+            requestPacket.position(payloadOffset)
+            val dnsPacket = requestPacket.slice()
+
+            val response = dnsInterceptor.processDnsPacket(dnsPacket)
+
+            if (response != null) {
+                Log.d(TAG, "Blocked DNS query")
+                writeResponse(outputStream, constructIpUdpResponse(requestPacket, response, ipHeaderLength))
+                statsRepository.incrementCount()
+                return
+            }
+
+            // Allowed. Forward to upstream with timeout.
             val dnsData = ByteArray(dnsPacket.remaining())
             dnsPacket.get(dnsData)
-            
-            val responseData = queryUpstream(dnsData)
-            if (responseData != null) {
-                val fullResponse = constructIpUdpResponse(
-                    requestPacket, 
-                    ByteBuffer.wrap(responseData), 
-                    ipHeaderLength
-                )
-                
-                withContext(Dispatchers.IO) {
-                    synchronized(outputStream) {
-                        outputStream.write(fullResponse)
-                    }
-                }
+
+            val responseData = try {
+                queryUpstream(dnsData)
+            } catch (e: Exception) {
+                Log.e(TAG, "DNS Resolution failed", e)
+                null
             }
+
+            // Never leave a query hanging. A black-holed lookup forces a client-side
+            // timeout and can flip the OS to "no internet" — which breaks Android
+            // Auto. Answer SERVFAIL so the stub resolver fails fast and can retry.
+            val payload = responseData ?: buildServfail(dnsData)
+            writeResponse(outputStream, constructIpUdpResponse(requestPacket, ByteBuffer.wrap(payload), ipHeaderLength))
         } catch (e: Exception) {
-            Log.e(TAG, "DNS Resolution failed", e)
+            // The tunnel may have been torn down mid-flight (reconfigure/stop),
+            // closing the stream. Swallow so a stale handler can't crash the loop.
+            Log.w(TAG, "Dropped DNS response (tunnel changed?)", e)
         }
+    }
+
+    private suspend fun writeResponse(outputStream: FileOutputStream, data: ByteArray) {
+        withContext(Dispatchers.IO) {
+            synchronized(outputStream) {
+                outputStream.write(data)
+            }
+        }
+    }
+
+    /** Minimal SERVFAIL built from the request bytes: flip QR on and set RCODE=2.
+     *  Keeps the original ID and question section so the resolver matches it to
+     *  the outstanding query. */
+    private fun buildServfail(requestDns: ByteArray): ByteArray {
+        val r = requestDns.copyOf()
+        if (r.size >= 4) {
+            r[2] = (r[2].toInt() or 0x80).toByte()           // QR=1 (preserve opcode + RD)
+            // RA=1, RCODE=2 (SERVFAIL); preserve the query's CD bit (RFC 4035).
+            r[3] = ((r[3].toInt() and 0x10) or 0x82).toByte()
+        }
+        return r
     }
 
     private suspend fun queryUpstream(dnsData: ByteArray): ByteArray? = withContext(Dispatchers.IO) {
@@ -382,8 +490,12 @@ class AdBlockVpnService : VpnService() {
         // (CFT-L1). Mark the distinct Revoked state BEFORE cleanup so it
         // survives stopVpn()'s updateState(false), then alert the parent.
         VpnController.notifyRevoked()
-        (applicationContext as CalyptraApp).protectionEventRepository
+        val app = applicationContext as CalyptraApp
+        app.protectionEventRepository
             .logAsync(com.calyptra.app.data.ProtectionEventType.REVOKED_OTHER_VPN)
+        // Persist the yield so the watchdog/boot don't restart us and kill the
+        // other VPN — survives process death, unlike the in-memory Revoked state.
+        app.persistYieldAsync(true)
         postRevokedNotification()
         stopVpn()
     }
@@ -412,12 +524,19 @@ class AdBlockVpnService : VpnService() {
     }
 
     private fun stopVpn() {
-        VpnController.updateState(false)
-        // Cancel the packet loop BEFORE closing the interface so the read
-        // doesn't throw into the log as a phantom failure (PWR-L1).
-        job?.cancel()
-        vpnInterface?.close()
-        vpnInterface = null
+        synchronized(tunnelLock) {
+            // Set first so an in-flight reconfigure (installTunnel) bails out and
+            // can't reinstall a tunnel after we've torn down.
+            stopping = true
+            VpnController.updateState(false)
+            // Cancel loops BEFORE closing the interface so the read doesn't throw
+            // into the log as a phantom failure (PWR-L1).
+            reconfigureJob?.cancel()
+            packetJob?.cancel()
+            job?.cancel()
+            vpnInterface?.close()
+            vpnInterface = null
+        }
         (applicationContext as CalyptraApp).networkMonitor.stopWatching()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
@@ -443,8 +562,19 @@ class AdBlockVpnService : VpnService() {
 
     companion object {
         const val ACTION_STOP = "com.calyptra.app.vpn.STOP"
+        const val ACTION_RECONFIGURE = "com.calyptra.app.vpn.RECONFIGURE"
         const val NOTIFICATION_ID = 1
         const val REVOKED_NOTIFICATION_ID = 2
+
+        /** System/automotive apps that must never route through the kids' DNS
+         *  filter — otherwise their connectivity checks (notably Android Auto)
+         *  see broken/slow DNS and refuse to connect. Missing packages are
+         *  ignored at establish() time. */
+        private val SYSTEM_EXCLUDED_PACKAGES = listOf(
+            "com.google.android.projection.gearhead", // Android Auto
+            "com.google.android.apps.maps",           // Maps (Android Auto navigation)
+            "com.google.android.gms",                 // Google Play services
+        )
 
         // Process-wide so the 5-min failure window survives service restarts.
         private val restartGuard = RestartGuard()

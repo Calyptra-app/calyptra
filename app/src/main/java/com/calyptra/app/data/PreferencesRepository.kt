@@ -27,6 +27,7 @@ class PreferencesRepository(private val context: Context) : PinStore {
     private val YOUTUBE_RESTRICT_LEVEL = stringPreferencesKey("youtube_restrict_level")
     private val BATTERY_PROMPT_SHOWN = booleanPreferencesKey("battery_prompt_shown")
     private val BLOCKED_CATEGORIES = stringSetPreferencesKey("blocked_categories")
+    private val YIELDED_TO_OTHER_VPN = booleanPreferencesKey("yielded_to_other_vpn")
     private val PIN_HASH = stringPreferencesKey("pin_hash")
     private val PIN_SALT = stringPreferencesKey("pin_salt")
     private val PIN_FAILED_ATTEMPTS = intPreferencesKey("pin_failed_attempts")
@@ -106,6 +107,21 @@ class PreferencesRepository(private val context: Context) : PinStore {
     suspend fun setProtectionEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[PROTECTION_ENABLED] = enabled
+        }
+    }
+
+    /** True after another VPN revoked us (CFT-L1). Persisted so the watchdog and
+     *  boot receiver keep yielding across process death — otherwise we'd restart
+     *  and kill the other VPN. Cleared when the parent explicitly toggles
+     *  protection. */
+    val yieldedToOtherVpn: Flow<Boolean> = context.dataStore.data
+        .map { preferences ->
+            preferences[YIELDED_TO_OTHER_VPN] ?: false
+        }
+
+    suspend fun setYieldedToOtherVpn(yielded: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[YIELDED_TO_OTHER_VPN] = yielded
         }
     }
     
