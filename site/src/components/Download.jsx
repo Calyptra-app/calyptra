@@ -26,7 +26,7 @@ export default function Download() {
                     <a
                         href={DOWNLOAD_URL}
                         target="_blank"
-                        rel="noreferrer"
+                        rel="noopener noreferrer"
                         className="magnetic-btn bg-coral text-white px-10 py-5 rounded-full font-sans font-bold text-lg shadow-[0_8px_40px_rgba(229,115,74,0.3)] leading-none"
                     >
                         <span className="relative z-10 flex items-center gap-2">
@@ -37,7 +37,7 @@ export default function Download() {
                     <a
                         href={REPO_URL}
                         target="_blank"
-                        rel="noreferrer"
+                        rel="noopener noreferrer"
                         className="magnetic-btn border border-white/20 text-white px-8 py-5 rounded-full font-sans font-semibold text-lg leading-none hover:bg-white/5"
                     >
                         <span className="relative z-10 flex items-center gap-2">
@@ -45,6 +45,19 @@ export default function Download() {
                         </span>
                     </a>
                 </div>
+
+                <p className="-mt-4 mb-10 text-white/40 font-sans text-xs leading-relaxed">
+                    Want to be sure your download is the real thing? You can check it against the{' '}
+                    <a
+                        href={DOWNLOAD_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline decoration-white/30 underline-offset-2 hover:text-white/60 transition-colors"
+                    >
+                        official release page
+                    </a>
+                    .
+                </p>
 
                 <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-white/60 font-mono text-xs tracking-tight border border-white/10 bg-white/5 px-8 py-4 rounded-2xl">
                     <span>Open source</span>

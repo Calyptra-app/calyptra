@@ -6,13 +6,23 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!--
+        QUERY_ALL_PACKAGES: required so the parent can exempt ANY installed app
+        from DNS filtering via the per-app whitelist (WhitelistViewModel ->
+        WhitelistDao -> AdBlockVpnService.buildTunnel's addDisallowedApplication).
+        The picker must enumerate every installed app, including user-installed
+        apps that have no launcher activity, so a MAIN/LAUNCHER <queries> filter
+        is insufficient (it would silently hide such apps from the parent).
+        NOTE: this is a Play-policy "restricted" permission and requires a
+        declared-use ("permissions declaration") statement in the Play Console.
+    -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <application
         android:name=".CalyptraApp"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"

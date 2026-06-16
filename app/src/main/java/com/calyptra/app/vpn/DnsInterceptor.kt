@@ -56,12 +56,17 @@ class DnsInterceptor(
                 }
                 offset++
                 if (offset + length > data.size) return null
-                
+
                 for (i in 0 until length) {
                     domainBuilder.append(data[offset + i].toChar())
                 }
                 domainBuilder.append('.')
                 offset += length
+
+                // Cap the assembled name at the DNS maximum (253 bytes). A crafted
+                // multi-KB QNAME must never reach the matcher; bail to the
+                // fall-through (null == forward/allow) instead.
+                if (domainBuilder.length > 253) return null
             }
             
             if (domainBuilder.isNotEmpty()) {

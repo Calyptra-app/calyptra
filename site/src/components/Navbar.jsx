@@ -35,7 +35,7 @@ export default function Navbar() {
                 <a
                     href={DOWNLOAD_URL}
                     target="_blank"
-                    rel="noreferrer"
+                    rel="noopener noreferrer"
                     className="magnetic-btn px-5 py-2.5 rounded-full font-sans font-semibold text-sm bg-coral text-white shadow-md shadow-coral/20"
                 >
                     <span className="relative z-10">Download</span>
