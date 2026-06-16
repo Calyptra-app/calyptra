@@ -5,7 +5,7 @@ export default function Download() {
     return (
         <section id="download" className="w-full py-28 md:py-44 px-6 flex flex-col items-center justify-center bg-navy-900 text-center relative z-10 overflow-hidden border-t border-coral/30">
             <div className="absolute inset-0 bg-grid-dark opacity-25 pointer-events-none"></div>
-            <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-navy/40 to-transparent pointer-events-none z-0"></div>
+            <div className="absolute inset-x-0 top-0 h-40 bg-linear-to-b from-navy/40 to-transparent pointer-events-none z-0"></div>
 
             <div className="max-w-4xl flex flex-col items-center relative z-10">
                 <div className="mb-8 flex items-center justify-center w-16 h-16 rounded-full bg-coral/10 border border-coral/25 text-coral">

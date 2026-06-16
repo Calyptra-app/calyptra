@@ -17,7 +17,7 @@ export default function Navbar() {
             <div
                 className={`pointer-events-auto flex items-center justify-between gap-4 px-4 sm:px-6 py-3 rounded-full transition-all duration-500 w-full max-w-5xl border ${scrolled
                     ? 'bg-cream/85 backdrop-blur-xl border-navy/10 text-navy shadow-lg shadow-navy/5'
-                    : 'bg-white/5 backdrop-blur-sm border-white/10 text-white'
+                    : 'bg-white/5 backdrop-blur-xs border-white/10 text-white'
                     }`}
             >
                 <a href="#top" className="flex items-center gap-2.5 hover-lift" aria-label="Calyptra home">
