@@ -1,5 +1,3 @@
-<!-- TODO: confirm privacy@pointblank.gr / security@pointblank.gr are monitored mailboxes, or replace with the preferred contact. -->
-
 # Calyptra Privacy Policy
 
 **Last updated: 2026-06-16**
@@ -27,20 +25,21 @@ leaves the phone."
 
 ## 1. Who is responsible for your data (the "data controller")
 
-**Point Blank Co-op**, a cooperative established in Greece, operates the Calyptra
-project.
+The Calyptra project is maintained by its open-source contributors (the
+**Calyptra maintainers**). There is no company behind it and no central operator
+that holds your data.
 
-- **Contact for privacy questions:** privacy@pointblank.gr
+- **Contact for privacy questions:** open an issue at
+  <https://github.com/Calyptra-app/calyptra/issues>
 
 Because Calyptra processes data **only on your device** and we operate no
 back-end systems, in practice the person who controls the data day-to-day is the
 adult who installs and manages the app on the child's device. We have no remote
 access to it.
 
-This policy is provided in the spirit of Article 13 of the EU General Data
-Protection Regulation (GDPR). Greece is in the EU, so the GDPR applies, and
-because the app is used on children's devices we take children's data
-particularly seriously (see Section 6).
+This policy follows the approach of Article 13 of the EU General Data Protection
+Regulation (GDPR). The app is offered to users in the EU and runs on children's
+devices, so we take children's data particularly seriously (see Section 6).
 
 ---
 
@@ -160,8 +159,8 @@ guardian. We treat the child as a **data subject** with heightened protection.
   supervised, in a way that is appropriate for the child's age and maturity.
   Monitoring is healthiest when it is not a secret.
 
-If you believe a child's data has somehow been mishandled, contact
-privacy@pointblank.gr.
+If you believe a child's data has somehow been mishandled, open an issue at
+<https://github.com/Calyptra-app/calyptra/issues>.
 
 ---
 
@@ -191,9 +190,10 @@ your device and we hold no copy**, you exercise most of these rights directly:
 - **Portability / restriction / objection:** Since we never receive your data,
   there is nothing for us to export or restrict on our side.
 
-If you have a question we can actually help with, email privacy@pointblank.gr.
-You also have the right to lodge a complaint with your local supervisory
-authority; in Greece this is the Hellenic Data Protection Authority (HDPA).
+If you have a question we can actually help with, open an issue at
+<https://github.com/Calyptra-app/calyptra/issues>. You also have the right to
+lodge a complaint with your national data protection authority in your EU
+country.
 
 ---
 
