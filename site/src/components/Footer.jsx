@@ -1,6 +1,6 @@
 import { Lock } from 'lucide-react';
 import Logo from './Logo';
-import { REPO_URL, LICENSE_URL, PRIVACY_URL, ATTRIBUTIONS_URL } from '../constants';
+import { REPO_URL, LICENSE_URL, PRIVACY_URL, ATTRIBUTIONS_URL, SUPPORT_URL } from '../constants';
 
 export default function Footer() {
     const year = new Date().getFullYear();
@@ -30,6 +30,7 @@ export default function Footer() {
                         <a href={PRIVACY_URL} target="_blank" rel="noopener noreferrer" className="font-outfit text-white/70 hover:text-coral transition-colors">Privacy</a>
                         <a href={ATTRIBUTIONS_URL} target="_blank" rel="noopener noreferrer" className="font-outfit text-white/70 hover:text-coral transition-colors">Attributions</a>
                         <a href={LICENSE_URL} target="_blank" rel="noopener noreferrer" className="font-outfit text-white/70 hover:text-coral transition-colors">License (AGPL-3.0)</a>
+                        <a href={SUPPORT_URL} target="_blank" rel="noopener noreferrer" className="font-outfit text-white/70 hover:text-coral transition-colors">Buy us a coffee</a>
                     </div>
                     <div className="flex flex-col gap-4 sm:text-right">
                         <span className="font-mono text-[10px] text-white/35 tracking-widest uppercase mb-1">System info</span>
