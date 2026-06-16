@@ -43,12 +43,20 @@ class AdBlockVpnService : VpnService() {
     private val categoryBlockManager by lazy { (applicationContext as CalyptraApp).categoryBlockManager }
     private val statsRepository by lazy { (applicationContext as CalyptraApp).statsRepository }
     private val safeSearchManager by lazy { (applicationContext as CalyptraApp).safeSearchManager }
+
+    /** Parent domain allowlist (the false-positive escape hatch). Like the
+     *  category matcher, this is rebuilt on change with no VPN restart — the set
+     *  is tiny and an allowlisted domain short-circuits to Allow. */
+    @Volatile private var allowedDomainMatcher: com.calyptra.app.blocklist.DomainMatcher? = null
+
     private val dnsInterceptor by lazy {
         DnsInterceptor { domain, queryType ->
             DnsPolicy.resolve(
                 domain = domain,
                 queryType = queryType,
+                isDomainAllowed = { d -> allowedDomainMatcher?.isBlocked(d) ?: false },
                 getRedirectIp = { d, t -> safeSearchManager.getRedirectIp(d, t) },
+                isThreatBlocked = { d -> blocklistManager.isThreatBlocked(d) },
                 isCategoryBlocked = { d -> categoryBlockManager.isCategoryBlocked(d) },
                 isAdBlocked = { d -> blocklistManager.isBlocked(d) }
             )
@@ -89,7 +97,19 @@ class AdBlockVpnService : VpnService() {
     }
 
     private fun startVpn() {
-        job = scope?.launch {
+        // Tear down any collectors/jobs from a previous start before re-creating
+        // them. The live-config collectors (blockedCategories, allowedDomains,
+        // etc.) are launched directly on `scope` as siblings of `job`, so a plain
+        // stop→start or a START_STICKY null-intent restart would otherwise leak a
+        // SECOND set of collectors onto the same scope. Two blockedCategories
+        // collectors racing on setEnabledCategories is how a disabled category
+        // (e.g. Reddit) could stay live: an older {reddit,nsfw} rebuild outrunning
+        // the newer {nsfw} one. Recreating the scope guarantees exactly one.
+        scope?.cancel()
+        val freshScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+        scope = freshScope
+        stopping = false
+        job = freshScope.launch {
             try {
                 stopping = false
                 val app = applicationContext as CalyptraApp
@@ -104,26 +124,40 @@ class AdBlockVpnService : VpnService() {
                 blocklistManager.initialize() // Ensure loaded
                 safeSearchManager.resolveEndpoints()
 
-                scope?.launch {
+                // Bind collectors to the scope captured at start, not the mutable
+                // `scope` field, so a concurrent restart can't attach them to a
+                // different generation.
+                freshScope.launch {
                     app.preferencesRepository.gameAdsAllowed.collect { allowed ->
                         blocklistManager.allowGameAds = allowed
                     }
                 }
-                scope?.launch {
+                freshScope.launch {
                     app.preferencesRepository.safeSearchEnabled.collect { enabled ->
                         safeSearchManager.safeSearchEnabled = enabled
                     }
                 }
-                scope?.launch {
+                freshScope.launch {
                     app.preferencesRepository.youtubeRestrictLevel.collect { level ->
                         safeSearchManager.youtubeRestrictLevel = level
                     }
                 }
-                scope?.launch {
+                freshScope.launch {
                     app.preferencesRepository.blockedCategories.collect { keys ->
                         categoryBlockManager.setEnabledCategories(
                             com.calyptra.app.blocklist.SocialCategory.fromKeys(keys)
                         )
+                    }
+                }
+                freshScope.launch {
+                    app.preferencesRepository.allowedDomains.collect { domains ->
+                        // Rebuild the immutable matcher in place — no VPN restart;
+                        // an empty allowlist means "match nothing".
+                        allowedDomainMatcher = if (domains.isEmpty()) {
+                            null
+                        } else {
+                            com.calyptra.app.blocklist.DomainMatcher(domains)
+                        }
                     }
                 }
 
@@ -534,6 +568,10 @@ class AdBlockVpnService : VpnService() {
             reconfigureJob?.cancel()
             packetJob?.cancel()
             job?.cancel()
+            // Cancel the whole scope so the live-config collectors (siblings of
+            // `job`, not children) stop too — otherwise they leak past stop and a
+            // later start would race a second set against them.
+            scope?.cancel()
             vpnInterface?.close()
             vpnInterface = null
         }

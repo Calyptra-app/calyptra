@@ -51,9 +51,17 @@ class PinManager(
             return VerifyResult.LockedOut(lockedUntil)
         }
 
-        val expected = decode(store.getPinHash())
-        val salt = decode(store.getPinSalt())
-        val ok = MessageDigest.isEqual(hasher(pin, salt), expected)
+        // Fail safe: any error reading/decoding the stored hash+salt or running
+        // the KDF (e.g. an empty/malformed salt on a half-written setup, an
+        // unsupported algorithm, a bad Base64 value) must surface as a wrong PIN,
+        // never an uncaught exception that kills the process during PIN entry.
+        val ok = try {
+            val expected = decode(store.getPinHash())
+            val salt = decode(store.getPinSalt())
+            MessageDigest.isEqual(hasher(pin, salt), expected)
+        } catch (e: Exception) {
+            false
+        }
 
         return if (ok) {
             store.setFailureState(0, 0L)

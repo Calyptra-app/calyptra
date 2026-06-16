@@ -3,6 +3,7 @@ package com.calyptra.app.vpn
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.ByteBuffer
 
@@ -11,11 +12,16 @@ class DnsInterceptorTest {
     /** Builds an interceptor wired the same way AdBlockVpnService wires it:
      *  one DnsPolicy resolver composing redirect, category, and ad-block checks. */
     private fun makeInterceptor(
+        isDomainAllowed: (String) -> Boolean = { false },
         getRedirectIp: (String, Int) -> ByteArray? = { _, _ -> null },
+        isThreatBlocked: (String) -> Boolean = { false },
         isCategoryBlocked: (String) -> Boolean = { false },
         isAdBlocked: (String) -> Boolean = { false }
     ) = DnsInterceptor { domain, queryType ->
-        DnsPolicy.resolve(domain, queryType, getRedirectIp, isCategoryBlocked, isAdBlocked)
+        DnsPolicy.resolve(
+            domain, queryType, isDomainAllowed, getRedirectIp,
+            isThreatBlocked, isCategoryBlocked, isAdBlocked
+        )
     }
 
     @Test
@@ -273,11 +279,111 @@ class DnsInterceptorTest {
         assertEquals(0x00.toByte(), responseBytes[7])
     }
 
+    // --- Threat (malware/phishing) always-on blocking ---
+
+    @Test
+    fun `threat-listed domain gets NXDOMAIN`() {
+        val interceptor = makeInterceptor(isThreatBlocked = { domain -> domain == "malware.example" })
+
+        val query = createDnsQuery("malware.example")
+        val response = interceptor.processDnsPacket(ByteBuffer.wrap(query))
+
+        assertNotNull("Response should not be null for threat-blocked domain", response)
+
+        val responseBytes = ByteArray(response!!.remaining())
+        response.get(responseBytes)
+
+        assertEquals("QR bit should be set", 0x81.toByte(), responseBytes[2])
+        assertEquals("RCODE should be NXDOMAIN (3)", 0x83.toByte(), responseBytes[3])
+        assertEquals("ANCOUNT must be 0 for NXDOMAIN", 0x00.toByte(), responseBytes[6])
+        assertEquals(0x00.toByte(), responseBytes[7])
+    }
+
+    @Test
+    fun `threat block wins over ad blocklist and category when domain is in all`() {
+        // A phishing domain that also happens to be on the ad list / a category
+        // must still be killed with NXDOMAIN, never sinkholed to 0.0.0.0.
+        val interceptor = makeInterceptor(
+            isThreatBlocked = { domain -> domain == "phish.example" },
+            isCategoryBlocked = { domain -> domain == "phish.example" },
+            isAdBlocked = { domain -> domain == "phish.example" }
+        )
+
+        val query = createDnsQuery("phish.example")
+        val response = interceptor.processDnsPacket(ByteBuffer.wrap(query))
+
+        assertNotNull(response)
+        val responseBytes = ByteArray(response!!.remaining())
+        response.get(responseBytes)
+
+        // NXDOMAIN (threat), not 0.0.0.0 with ANCOUNT=1 (ad block)
+        assertEquals("RCODE should be NXDOMAIN (3)", 0x83.toByte(), responseBytes[3])
+        assertEquals(0x00.toByte(), responseBytes[6])
+        assertEquals(0x00.toByte(), responseBytes[7])
+    }
+
+    @Test
+    fun `DnsPolicy resolves BlockNxdomain for threat hit`() {
+        val verdict = DnsPolicy.resolve(
+            domain = "malware.example", queryType = 1,
+            isDomainAllowed = { false },
+            getRedirectIp = { _, _ -> null },
+            isThreatBlocked = { true },
+            isCategoryBlocked = { false },
+            isAdBlocked = { false }
+        )
+        assertEquals(Verdict.BlockNxdomain, verdict)
+    }
+
+    @Test
+    fun `DnsPolicy threat hit wins over ad sinkhole`() {
+        val verdict = DnsPolicy.resolve(
+            domain = "both.example", queryType = 1,
+            isDomainAllowed = { false },
+            getRedirectIp = { _, _ -> null },
+            isThreatBlocked = { true },
+            isCategoryBlocked = { false },
+            isAdBlocked = { true }
+        )
+        // Threat is checked before the ad list, so the verdict is NXDOMAIN.
+        assertEquals(Verdict.BlockNxdomain, verdict)
+    }
+
+    @Test
+    fun `redirect wins over threat block`() {
+        // SafeSearch/YouTube redirect precedes the threat check, mirroring the
+        // documented ordering (redirect > threat > category > ad).
+        val verdict = DnsPolicy.resolve(
+            domain = "www.youtube.com", queryType = 1,
+            isDomainAllowed = { false },
+            getRedirectIp = { _, _ -> byteArrayOf(216.toByte(), 239.toByte(), 38, 120) },
+            isThreatBlocked = { true },
+            isCategoryBlocked = { false },
+            isAdBlocked = { false }
+        )
+        assertTrue("Redirect must win over a threat hit", verdict is Verdict.Redirect)
+    }
+
+    @Test
+    fun `non-listed domain still resolves Allow with threat check wired`() {
+        val verdict = DnsPolicy.resolve(
+            domain = "example.com", queryType = 1,
+            isDomainAllowed = { false },
+            getRedirectIp = { _, _ -> null },
+            isThreatBlocked = { false },
+            isCategoryBlocked = { false },
+            isAdBlocked = { false }
+        )
+        assertEquals(Verdict.Allow, verdict)
+    }
+
     @Test
     fun `DnsPolicy resolves Allow when nothing matches`() {
         val verdict = DnsPolicy.resolve(
             domain = "example.com", queryType = 1,
+            isDomainAllowed = { false },
             getRedirectIp = { _, _ -> null },
+            isThreatBlocked = { false },
             isCategoryBlocked = { false },
             isAdBlocked = { false }
         )
@@ -288,11 +394,119 @@ class DnsInterceptorTest {
     fun `DnsPolicy resolves Nodata for empty redirect IP`() {
         val verdict = DnsPolicy.resolve(
             domain = "google.com", queryType = 28,
+            isDomainAllowed = { false },
             getRedirectIp = { _, _ -> byteArrayOf() },
+            isThreatBlocked = { true },
             isCategoryBlocked = { true },
             isAdBlocked = { true }
         )
         assertEquals(Verdict.Nodata, verdict)
+    }
+
+    // --- Domain allowlist (false-positive escape hatch) ---
+
+    @Test
+    fun `allowlisted domain resolves Allow even when threat, category and ad listed`() {
+        // The allowlist is the very first check: a parent-rescued domain must win
+        // over every blocking rule, including the always-on threat list.
+        val verdict = DnsPolicy.resolve(
+            domain = "rescued.example", queryType = 1,
+            isDomainAllowed = { domain -> domain == "rescued.example" },
+            getRedirectIp = { _, _ -> null },
+            isThreatBlocked = { true },
+            isCategoryBlocked = { true },
+            isAdBlocked = { true }
+        )
+        assertEquals("allowlist must win over threat/category/ad", Verdict.Allow, verdict)
+    }
+
+    @Test
+    fun `allowlist wins over a SafeSearch redirect`() {
+        // Allowlisting precedes the redirect — the parent explicitly chose to let
+        // this domain through untouched.
+        val verdict = DnsPolicy.resolve(
+            domain = "google.com", queryType = 1,
+            isDomainAllowed = { true },
+            getRedirectIp = { _, _ -> byteArrayOf(216.toByte(), 239.toByte(), 38, 120) },
+            isThreatBlocked = { false },
+            isCategoryBlocked = { false },
+            isAdBlocked = { false }
+        )
+        assertEquals(Verdict.Allow, verdict)
+    }
+
+    @Test
+    fun `non-allowlisted domain still blocks normally`() {
+        val verdict = DnsPolicy.resolve(
+            domain = "malware.example", queryType = 1,
+            isDomainAllowed = { domain -> domain == "rescued.example" },
+            getRedirectIp = { _, _ -> null },
+            isThreatBlocked = { true },
+            isCategoryBlocked = { false },
+            isAdBlocked = { false }
+        )
+        assertEquals(Verdict.BlockNxdomain, verdict)
+    }
+
+    @Test
+    fun `processDnsPacket returns null for an allowlisted domain that is also blocked`() {
+        // End-to-end through the interceptor: allowlisted -> forwarded upstream
+        // (null response), never sinkholed.
+        val interceptor = makeInterceptor(
+            isDomainAllowed = { domain -> domain == "health.example" },
+            isThreatBlocked = { true },
+            isAdBlocked = { true }
+        )
+
+        val query = createDnsQuery("health.example")
+        val response = interceptor.processDnsPacket(ByteBuffer.wrap(query))
+
+        assertNull("Allowlisted domain must not be answered/blocked", response)
+    }
+
+    // --- NSFW category gating (Adult content toggle) ---
+
+    @Test
+    fun `nsfw domain is allowed when the nsfw category is disabled`() {
+        // The Adult content toggle is OFF by default — nothing extra is blocked.
+        val verdict = DnsPolicy.resolve(
+            domain = "porn.example", queryType = 1,
+            isDomainAllowed = { false },
+            getRedirectIp = { _, _ -> null },
+            isThreatBlocked = { false },
+            isCategoryBlocked = { false }, // nsfw category not enabled
+            isAdBlocked = { false }
+        )
+        assertEquals(Verdict.Allow, verdict)
+    }
+
+    @Test
+    fun `nsfw domain gets NXDOMAIN when the nsfw category is enabled`() {
+        // With the Adult content toggle ON the nsfw set feeds isCategoryBlocked.
+        val verdict = DnsPolicy.resolve(
+            domain = "porn.example", queryType = 1,
+            isDomainAllowed = { false },
+            getRedirectIp = { _, _ -> null },
+            isThreatBlocked = { false },
+            isCategoryBlocked = { domain -> domain == "porn.example" },
+            isAdBlocked = { false }
+        )
+        assertEquals(Verdict.BlockNxdomain, verdict)
+    }
+
+    @Test
+    fun `allowlist rescues a falsely-blocked nsfw domain`() {
+        // Critical for NSFW over-block: a health/education site caught by the nsfw
+        // list is rescued by the parent allowlist even with the category ON.
+        val verdict = DnsPolicy.resolve(
+            domain = "sexeducation.example", queryType = 1,
+            isDomainAllowed = { domain -> domain == "sexeducation.example" },
+            getRedirectIp = { _, _ -> null },
+            isThreatBlocked = { false },
+            isCategoryBlocked = { true }, // nsfw list over-blocks it
+            isAdBlocked = { false }
+        )
+        assertEquals(Verdict.Allow, verdict)
     }
 
     private fun createDnsQuery(domain: String, queryType: Int = 1): ByteArray {

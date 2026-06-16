@@ -12,30 +12,44 @@ class BlocklistUpdateWorker(
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
-        return try {
-            val updater = BlocklistUpdater()
-            // In real app, url might come from settings
+        val updater = BlocklistUpdater()
+        val app = applicationContext as CalyptraApp
+
+        // Fetch the ad/tracker list and the always-on threat list independently so
+        // one source failing (network/404/etc.) never starves the other. If either
+        // fails we let WorkManager retry the whole run via the catch below.
+        var anyFailed = false
+
+        try {
             val newDomains = updater.fetch()
-            
             if (newDomains.isNotEmpty()) {
-                val app = applicationContext as CalyptraApp
                 app.blocklistManager.saveUpdate(newDomains)
-                
-                // Update timestamp in prefs
                 app.preferencesRepository.updateBlocklistMetadata(
                     System.currentTimeMillis(),
                     "remote-update"
                 )
             }
-            
-            Result.success()
         } catch (e: Exception) {
             e.printStackTrace()
-            if (runAttemptCount < 3) {
-                Result.retry()
-            } else {
-                Result.failure()
+            anyFailed = true
+        }
+
+        try {
+            val newThreats = updater.fetchThreat()
+            if (newThreats.isNotEmpty()) {
+                app.blocklistManager.saveThreatUpdate(newThreats)
             }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            anyFailed = true
+        }
+
+        return if (!anyFailed) {
+            Result.success()
+        } else if (runAttemptCount < 3) {
+            Result.retry()
+        } else {
+            Result.failure()
         }
     }
 }

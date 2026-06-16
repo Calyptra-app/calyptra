@@ -136,6 +136,46 @@ class PinManagerTest {
     }
 
     @Test
+    fun `fresh install set then verify correct and wrong pin does not throw`() = runBlocking {
+        // Reproduces the PIN-entry crash path: a clean install where the parent
+        // just set a new PIN, then verifies. Must never throw (BUG: PinHasher
+        // crash on verify) — correct pin -> Ok, wrong pin -> Wrong.
+        val manager = PinManager(FakePinStore(), clock)
+        manager.setPin("2468")
+        assertEquals(VerifyResult.Ok, manager.verify("2468"))
+        assertTrue(manager.verify("1357") is VerifyResult.Wrong)
+    }
+
+    @Test
+    fun `verify fails safe instead of crashing when stored salt is empty`() = runBlocking {
+        // A half-written / corrupted setup can leave an empty salt; decoding it
+        // yields a 0-length ByteArray, which made PBKDF2 throw
+        // IllegalArgumentException("the salt parameter must not be empty") and
+        // crash the process during PIN entry. It must now surface as a wrong PIN.
+        val store = FakePinStore().apply {
+            pinHash = "" // non-empty hash string would still decode; "" => empty
+            pinSalt = ""
+        }
+        // Force isPinSet()-style state: a hash is present but the salt is empty.
+        store.pinHash = java.util.Base64.getEncoder().encodeToString(ByteArray(32))
+        val manager = PinManager(store, clock)
+
+        val result = manager.verify("1234")
+        assertTrue("empty salt must fail safe as Wrong, not throw", result is VerifyResult.Wrong)
+    }
+
+    @Test
+    fun `verify fails safe when stored hash is not valid base64`() = runBlocking {
+        val store = FakePinStore().apply {
+            pinHash = "!!!not-base64!!!"
+            pinSalt = java.util.Base64.getEncoder().encodeToString(ByteArray(16))
+        }
+        val manager = PinManager(store, clock)
+        val result = manager.verify("1234")
+        assertTrue("malformed stored hash must fail safe, not throw", result is VerifyResult.Wrong)
+    }
+
+    @Test
     fun `setPin replaces the old pin and re-salts`() = runBlocking {
         val store = FakePinStore()
         val manager = PinManager(store, clock)

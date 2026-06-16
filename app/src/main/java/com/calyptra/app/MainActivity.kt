@@ -11,6 +11,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.calyptra.app.ui.AllowlistScreen
 import com.calyptra.app.ui.MainViewModel
 import com.calyptra.app.ui.WhitelistScreen
 import com.calyptra.app.ui.home.KidHomeScreen
@@ -56,11 +57,19 @@ class MainActivity : ComponentActivity() {
                             viewModel = viewModel,
                             onBack = { navController.popBackStack() },
                             onNavigateToWhitelist = { navController.navigate("whitelist") },
+                            onNavigateToAllowlist = { navController.navigate("allowlist") },
                             onNavigateToTimeline = { navController.navigate("timeline") }
                         )
                     }
                     composable("whitelist") {
                         WhitelistScreen(
+                            onBack = { navController.popBackStack() }
+                        )
+                    }
+                    composable("allowlist") {
+                        // Per-domain allowlist — the false-positive escape hatch.
+                        // Reached through the PIN-gated settings door (Phase 2).
+                        AllowlistScreen(
                             onBack = { navController.popBackStack() }
                         )
                     }

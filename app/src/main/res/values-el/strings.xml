@@ -45,6 +45,20 @@
     <string name="category_section_desc">Αποκλείστε εφαρμογές και ιστότοπους κοινωνικής δικτύωσης σε αυτή τη συσκευή</string>
     <string name="category_facebook_note">Το WhatsApp παραμένει διαθέσιμο</string>
 
+    <!-- Phase 2: αποκλεισμός περιεχομένου ενηλίκων (NSFW) -->
+    <string name="nsfw_category_title">Περιεχόμενο ενηλίκων</string>
+    <string name="nsfw_category_description">Αποκλεισμός πορνογραφίας και άλλων ιστότοπων για ενήλικες</string>
+
+    <!-- Phase 2: λίστα επιτρεπόμενων ιστότοπων (διέξοδος για ψευδώς αποκλεισμένα) -->
+    <string name="allowlist_title">Επιτρεπόμενοι ιστότοποι</string>
+    <string name="allowlist_row_desc">Να επιτρέπονται πάντα συγκεκριμένοι ιστότοποι, ακόμη κι αν ένα φίλτρο τους αποκλείει</string>
+    <string name="allowlist_hint">Προσθέστε έναν ιστότοπο που δεν πρέπει ποτέ να αποκλείεται. Χρησιμοποιήστε το για να διορθώσετε έναν ιστότοπο που αποκλείστηκε κατά λάθος (π.χ. ιστότοπο υγείας ή σχολείου).</string>
+    <string name="allowlist_input_label">Ιστότοπος</string>
+    <string name="allowlist_input_placeholder">example.com</string>
+    <string name="allowlist_add">Προσθήκη</string>
+    <string name="allowlist_remove">Αφαίρεση</string>
+    <string name="allowlist_empty">Δεν υπάρχουν επιτρεπόμενοι ιστότοποι ακόμη</string>
+
     <!-- Sprint 01 keys previously missing from EL (fell back to English) -->
     <string name="game_ads_title">Να επιτρέπονται διαφημίσεις παιχνιδιών</string>
     <string name="game_ads_description">Επιτρέψτε στα παιδιά να κερδίζουν ανταμοιβές σε δωρεάν παιχνίδια</string>

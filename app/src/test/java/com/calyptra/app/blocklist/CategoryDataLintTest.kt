@@ -1,5 +1,6 @@
 package com.calyptra.app.blocklist
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -13,6 +14,10 @@ class CategoryDataLintTest {
     private val rawDir = File("src/main/res/raw")
     private val hostnameRegex = Regex("^(?!-)[a-z0-9-]{1,63}(?<!-)(\\.(?!-)[a-z0-9-]{1,63}(?<!-))+$")
 
+    /** The small, hand-curated social files. NSFW is a large upstream bundle
+     *  (HaGeZi, ~96k domains) with a different contract, asserted separately. */
+    private val socialCategories = SocialCategory.entries.filter { it != SocialCategory.NSFW }
+
     private fun linesOf(category: SocialCategory): List<String> {
         val file = File(rawDir, "category_${category.key}.txt")
         assertTrue("missing ${file.path}", file.exists())
@@ -23,14 +28,14 @@ class CategoryDataLintTest {
 
     @Test
     fun `every category file exists and is non-empty`() {
-        for (category in SocialCategory.entries) {
+        for (category in socialCategories) {
             assertTrue("${category.key} must have domains", linesOf(category).isNotEmpty())
         }
     }
 
     @Test
     fun `every line is a valid lowercase hostname`() {
-        for (category in SocialCategory.entries) {
+        for (category in socialCategories) {
             for (line in linesOf(category)) {
                 assertTrue(
                     "invalid hostname '$line' in category_${category.key}.txt",
@@ -42,7 +47,7 @@ class CategoryDataLintTest {
 
     @Test
     fun `no duplicates within a category`() {
-        for (category in SocialCategory.entries) {
+        for (category in socialCategories) {
             val lines = linesOf(category)
             assertTrue(
                 "duplicates in category_${category.key}.txt",
@@ -64,7 +69,7 @@ class CategoryDataLintTest {
         // YouTube control belongs to Restricted Mode (VPN-L3.6); blocking
         // google domains would break far more than social media.
         val forbidden = listOf("youtube.com", "googlevideo.com", "google.com", "googleapis.com")
-        for (category in SocialCategory.entries) {
+        for (category in socialCategories) {
             for (line in linesOf(category)) {
                 for (domain in forbidden) {
                     assertFalse(
@@ -77,8 +82,28 @@ class CategoryDataLintTest {
     }
 
     @Test
-    fun `total category volume stays within the APK budget`() {
-        val total = SocialCategory.entries.sumOf { linesOf(it).size }
+    fun `total social category volume stays within the APK budget`() {
+        val total = socialCategories.sumOf { linesOf(it).size }
         assertTrue("expected < 500 domains total, got $total", total < 500)
+    }
+
+    /** The NSFW bundle (nsfw.txt) is the large HaGeZi adult-content list. It has
+     *  its own contract: present, non-trivial, credited, and lowercase domains. */
+    @Test
+    fun `nsfw bundle exists, is substantial, credited, and lowercase`() {
+        val file = File(rawDir, "nsfw.txt")
+        assertTrue("missing ${file.path}", file.exists())
+        val all = file.readLines().map { it.trim() }.filter { it.isNotBlank() }
+        val header = all.filter { it.startsWith("#") }.joinToString("\n").lowercase()
+        assertTrue("nsfw.txt must credit HaGeZi", header.contains("hagezi"))
+        assertTrue("nsfw.txt must record GPL-3.0", header.contains("gpl-3.0"))
+
+        val domains = all.filter { !it.startsWith("#") }
+        assertTrue("expected a substantial nsfw list, got ${domains.size}", domains.size > 1000)
+        // Sample-validate format (the full list is too large to regex per line).
+        for (line in domains.take(200) + domains.takeLast(200)) {
+            assertEquals("nsfw entry must be lowercased: '$line'", line.lowercase(), line)
+            assertTrue("nsfw entry must look like a hostname: '$line'", line.contains('.'))
+        }
     }
 }

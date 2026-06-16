@@ -35,6 +35,24 @@ In addition, the Calyptra project manually curated a set of mobile-game ad-SDK,
 tracker, and telemetry domains and merged them with the intersection of the
 sources above.
 
+---
+
+## Bundled threat list (malware / phishing)
+
+The file [`app/src/main/res/raw/threat_seed.txt`](app/src/main/res/raw/threat_seed.txt)
+is an always-on security blocklist (matches return NXDOMAIN). It is an
+offline-first snapshot of a single upstream source:
+
+| Source | Author | License | Upstream |
+|--------|--------|---------|----------|
+| HaGeZi Threat Intelligence Feeds — "Mini" | HaGeZi | **GPL-3.0** | https://github.com/hagezi/dns-blocklists |
+
+The bundled snapshot is sampled from the upstream
+`wildcard/tif.mini-onlydomains.txt` export so malware/phishing protection works
+before the first network fetch. The combined data is distributed under
+**GPL-3.0**; if you redistribute it you must preserve this attribution and the
+GPL-3.0 terms.
+
 **Combined-work licensing.** Because the bundled list incorporates GPL-3.0
 material (HaGeZi), the combined blocklist data is distributed under the
 **GPL-3.0**. AGPL-3.0 (the app) and GPL-3.0 (the data) are compatible for
@@ -43,10 +61,35 @@ this attribution and the GPL-3.0 terms.
 
 ### Runtime updates
 
-The app can fetch an updated blocklist at runtime (see
+The app can fetch updated blocklists at runtime (see
 `app/src/main/java/com/calyptra/app/blocklist/BlocklistUpdater.kt`). The default
-update URL points at the **HaGeZi "Light"** list (GPL-3.0). Any list fetched at
-runtime remains under its upstream license; Calyptra does not relicense it.
+ad/tracker update URL points at the **HaGeZi "Light"** list, and the always-on
+threat update URL points at the **HaGeZi Threat Intelligence Feeds "Mini"** list
+(both GPL-3.0). Any list fetched at runtime remains under its upstream license;
+Calyptra does not relicense it.
+
+---
+
+## Bundled adult-content (NSFW) list
+
+The file [`app/src/main/res/raw/nsfw.txt`](app/src/main/res/raw/nsfw.txt)
+is the optional adult-content blocklist behind the parent-toggled, PIN-gated
+"Adult content" switch (default OFF; matches return NXDOMAIN, like the social
+categories). It is an offline-only snapshot of a single upstream source:
+
+| Source | Author | License | Upstream |
+|--------|--------|---------|----------|
+| HaGeZi NSFW DNS Blocklist | HaGeZi | **GPL-3.0** | https://github.com/hagezi/dns-blocklists |
+
+The bundled snapshot is taken from the upstream `wildcard/nsfw-onlydomains.txt`
+export (plain one-domain-per-line). There is no runtime updater for this list;
+it is shipped offline only. The combined data is distributed under **GPL-3.0**;
+if you redistribute it you must preserve this attribution and the GPL-3.0 terms.
+
+**Combined-work licensing.** As with the threat list, because this bundled list
+incorporates GPL-3.0 material (HaGeZi), the combined data is distributed under
+the **GPL-3.0**, which is compatible with the app's AGPL-3.0 for distribution
+together.
 
 ---
 

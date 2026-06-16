@@ -61,6 +61,8 @@ class PinGateReducerTest {
         val expected = setOf(
             "DISABLE_PROTECTION", "GAME_ADS", "SAFE_SEARCH",
             "YOUTUBE_LEVEL", "WHITELIST", "CATEGORIES",
+            // Phase 2: opening the per-domain allowlist is also gated.
+            "DOMAIN_ALLOWLIST",
             // F12: entering the parent settings screen is the door to all of
             // the above; gating it opens the grace session at the threshold.
             "PARENT_SETTINGS"

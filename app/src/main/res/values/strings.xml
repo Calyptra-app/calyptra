@@ -54,6 +54,20 @@
     <string name="category_section_desc">Block social apps and sites on this device</string>
     <string name="category_facebook_note">WhatsApp stays available</string>
 
+    <!-- Phase 2: adult/NSFW content blocker (parent-toggled, PIN-gated, default OFF) -->
+    <string name="nsfw_category_title">Adult content</string>
+    <string name="nsfw_category_description">Block pornography and other adult sites</string>
+
+    <!-- Phase 2: per-domain allowlist (false-positive escape hatch) -->
+    <string name="allowlist_title">Allowed sites</string>
+    <string name="allowlist_row_desc">Always allow specific websites, even if a filter blocks them</string>
+    <string name="allowlist_hint">Add a website that should never be blocked. Use this to fix a wrongly blocked site (e.g. a health or school site).</string>
+    <string name="allowlist_input_label">Website</string>
+    <string name="allowlist_input_placeholder">example.com</string>
+    <string name="allowlist_add">Add</string>
+    <string name="allowlist_remove">Remove</string>
+    <string name="allowlist_empty">No allowed sites yet</string>
+
     <!-- F12 UI redesign: kid home -->
     <string name="home_status_on">Protected!</string>
     <string name="home_status_off">Not protected</string>
