@@ -20,7 +20,8 @@ export default {
             fontFamily: {
                 sans: ['"Plus Jakarta Sans"', 'sans-serif'],
                 outfit: ['Outfit', 'sans-serif'],
-                drama: ['"Fraunces"', 'serif'],
+                // Emphasis = same family, italic (no mixed-family serif accent).
+                drama: ['"Plus Jakarta Sans"', 'sans-serif'],
                 mono: ['"IBM Plex Mono"', 'monospace'],
             },
             keyframes: {

@@ -1,4 +1,4 @@
-import { Activity } from 'lucide-react';
+import { Lock } from 'lucide-react';
 import Logo from './Logo';
 import { REPO_URL, LICENSE_URL, PRIVACY_URL, ATTRIBUTIONS_URL } from '../constants';
 
@@ -14,12 +14,12 @@ export default function Footer() {
                         <h3 className="font-outfit font-bold text-3xl tracking-tight text-white">Calyptra</h3>
                     </div>
                     <p className="font-sans text-white/55 text-sm leading-relaxed">
-                        The shield that lets them grow. On-device ad &amp; tracker blocking for
-                        kids&rsquo; Android devices &mdash; no cloud, no telemetry.
+                        The shield that lets them grow. On-device ad and tracker blocking for
+                        kids&rsquo; Android phones, with no cloud and nothing to track.
                     </p>
-                    <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-full px-5 py-2 w-fit mt-2 shadow-inner">
-                        <span className="w-2.5 h-2.5 rounded-full bg-coral animate-pulse-soft shadow-[0_0_10px_#E5734A]"></span>
-                        <span className="font-mono text-[10px] tracking-[0.2em] text-white/80 uppercase">vpn_status: local</span>
+                    <div className="flex items-center gap-2.5 bg-white/5 border border-white/10 rounded-full px-5 py-2 w-fit mt-2">
+                        <Lock size={13} className="text-coral" />
+                        <span className="font-mono text-[10px] tracking-[0.2em] text-white/75 uppercase">Runs entirely on the phone</span>
                     </div>
                 </div>
 
@@ -34,10 +34,8 @@ export default function Footer() {
                     <div className="flex flex-col gap-4 sm:text-right">
                         <span className="font-mono text-[10px] text-white/35 tracking-widest uppercase mb-1">System info</span>
                         <span className="font-outfit text-white/50">&copy; {year} Calyptra</span>
-                        <span className="font-outfit text-white/50">Beta &middot; distributed as APK</span>
-                        <span className="font-outfit text-white/50 flex items-center sm:justify-end gap-2">
-                            Runs <Activity size={14} className="text-coral" /> locally
-                        </span>
+                        <span className="font-outfit text-white/50">Beta release, installed as an APK</span>
+                        <span className="font-outfit text-white/50">Free and open source</span>
                     </div>
                 </div>
             </div>

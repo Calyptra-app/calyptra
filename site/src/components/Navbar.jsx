@@ -29,6 +29,7 @@ export default function Navbar() {
                     <a href="#features" className="hover-lift opacity-90 hover:opacity-100">Features</a>
                     <a href="#how-it-works" className="hover-lift opacity-90 hover:opacity-100">How it works</a>
                     <a href="#privacy" className="hover-lift opacity-90 hover:opacity-100">Privacy</a>
+                    <a href="#faq" className="hover-lift opacity-90 hover:opacity-100">FAQ</a>
                 </div>
 
                 <a
