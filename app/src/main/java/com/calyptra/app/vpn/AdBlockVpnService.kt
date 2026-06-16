@@ -16,6 +16,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.Semaphore
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.net.DatagramPacket
@@ -38,7 +39,14 @@ class AdBlockVpnService : VpnService() {
      *  async reconfigure path can't race on vpnInterface/packetJob. */
     private val tunnelLock = Any()
     @Volatile private var stopping = false
-    
+
+    /** Ceiling on concurrent in-flight DNS handlers. A DNS flood would otherwise
+     *  launch an unbounded number of coroutines (one per :53 packet) and OOM the
+     *  process. Packets that can't acquire a permit are dropped (the stub resolver
+     *  retries). Permits are released in handleDnsRequest's finally, exactly once
+     *  per successful acquire. */
+    private val inFlightDnsGate = Semaphore(MAX_INFLIGHT_DNS)
+
     private val blocklistManager by lazy { (applicationContext as CalyptraApp).blocklistManager }
     private val categoryBlockManager by lazy { (applicationContext as CalyptraApp).categoryBlockManager }
     private val statsRepository by lazy { (applicationContext as CalyptraApp).statsRepository }
@@ -293,13 +301,34 @@ class AdBlockVpnService : VpnService() {
         val outputStream = FileOutputStream(vpnInterface.fileDescriptor)
         val buffer = ByteBuffer.allocate(32767)
 
-        try {
-            while (isActive) {
-                val length = withContext(Dispatchers.IO) {
+        while (isActive) {
+            val length = try {
+                withContext(Dispatchers.IO) {
                     inputStream.read(buffer.array())
                 }
-                if (length <= 0) {
-                    delay(1)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // The tunnel fd was closed (reconfigure/stop) or the read otherwise
+                // failed. End the loop cleanly; letting it propagate would fail the
+                // coroutine and reach the scope's (handler-less) uncaught path.
+                Log.d(TAG, "Packet read ended", e)
+                break
+            }
+            if (length <= 0) {
+                delay(1)
+                buffer.clear()
+                continue
+            }
+            // Per-packet body is isolated: a single malformed packet that throws
+            // (e.g. an unexpected index) must skip and keep the loop alive, never
+            // terminate `while (isActive)` and silently stop servicing DNS.
+            // CancellationException is rethrown so coroutine cancellation
+            // (reconfigure/stop cancelling packetJob) still ends the loop.
+            try {
+                // A well-formed IPv4 header is at least 20 bytes; without that we
+                // can't even read the protocol/header-length fields safely.
+                if (length < 20) {
                     buffer.clear()
                     continue
                 }
@@ -314,18 +343,36 @@ class AdBlockVpnService : VpnService() {
                 if (version == 4 && protocol == 17) {
                     val ihl = packetBuffer.get(0).toInt() and 0xF
                     val headerLength = ihl * 4
+                    // headerLength can be 20..60 per IHL; reject anything that
+                    // doesn't leave room for the UDP dst-port bytes we read below.
+                    if (headerLength !in 20..(length - 4)) {
+                        buffer.clear()
+                        continue
+                    }
                     val dstPort = ((packetBuffer.get(headerLength + 2).toInt() and 0xFF) shl 8) or (packetBuffer.get(headerLength + 3).toInt() and 0xFF)
 
                     if (dstPort == 53) {
-                        launch {
-                            handleDnsRequest(packetBuffer, headerLength, outputStream)
+                        // Bounded gate: drop the packet rather than launch when too
+                        // many handlers are already in flight (DNS-flood OOM guard).
+                        if (inFlightDnsGate.tryAcquire()) {
+                            launch {
+                                try {
+                                    handleDnsRequest(packetBuffer, headerLength, outputStream)
+                                } finally {
+                                    inFlightDnsGate.release()
+                                }
+                            }
+                        } else {
+                            Log.d(TAG, "Dropping DNS query: too many in flight")
                         }
                     }
                 }
-                buffer.clear()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "Skipping malformed packet", e)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Packet loop error", e)
+            buffer.clear()
         }
     }
 
@@ -410,12 +457,35 @@ class AdBlockVpnService : VpnService() {
             val inPacket = DatagramPacket(responseBuffer, responseBuffer.size)
             socket.receive(inPacket)
 
-            inPacket.data.copyOf(inPacket.length)
+            val response = inPacket.data.copyOf(inPacket.length)
+            // Bounded defense against off-path/blind UDP spoofing: only forward an
+            // upstream answer that actually matches the query we sent (transaction
+            // ID + QR bit). Anything else is dropped, not relayed to the client.
+            if (!matchesQuery(dnsData, response)) {
+                Log.w(TAG, "Dropping upstream DNS response: does not match query ($server)")
+                null
+            } else {
+                response
+            }
         } catch (e: Exception) {
             null
         } finally {
             socket?.close()
         }
+    }
+
+    /** True when [response] is a plausible answer to the query [query] we sent
+     *  upstream: same DNS transaction ID (bytes 0-1) and the QR bit set (high bit
+     *  of byte 2 indicates a response). Both buffers are bounds-checked so a
+     *  short/garbage upstream payload is treated as a non-match (dropped). */
+    private fun matchesQuery(query: ByteArray, response: ByteArray): Boolean {
+        // DNS header is 12 bytes; we only need the first 3 here.
+        if (query.size < 3 || response.size < 3) return false
+        // Transaction ID must match.
+        if (query[0] != response[0] || query[1] != response[1]) return false
+        // QR bit (0x80 of byte 2) must indicate a response.
+        if ((response[2].toInt() and 0x80) == 0) return false
+        return true
     }
 
     private fun constructIpUdpResponse(request: ByteBuffer, dnsPayload: ByteBuffer, ipHeaderLength: Int): ByteArray {
@@ -603,6 +673,9 @@ class AdBlockVpnService : VpnService() {
         const val ACTION_RECONFIGURE = "com.calyptra.app.vpn.RECONFIGURE"
         const val NOTIFICATION_ID = 1
         const val REVOKED_NOTIFICATION_ID = 2
+
+        /** Max concurrent in-flight DNS handlers; excess :53 packets are dropped. */
+        private const val MAX_INFLIGHT_DNS = 128
 
         /** System/automotive apps that must never route through the kids' DNS
          *  filter — otherwise their connectivity checks (notably Android Auto)

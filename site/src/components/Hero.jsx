@@ -66,7 +66,7 @@ export default function Hero() {
                         <a
                             href={DOWNLOAD_URL}
                             target="_blank"
-                            rel="noreferrer"
+                            rel="noopener noreferrer"
                             className="magnetic-btn bg-coral text-white px-8 py-4 rounded-full font-sans font-bold text-lg shadow-[0_10px_30px_-12px_rgba(7,20,97,0.7)]"
                         >
                             <span className="relative z-10">Download for Android</span>

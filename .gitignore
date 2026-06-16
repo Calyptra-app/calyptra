@@ -24,6 +24,15 @@ output.txt
 # Signing keys
 *.keystore
 *.jks
+*.p12
+*.pfx
+*.pem
+keystore.properties
+signing.properties
+
+# Secrets / environment
+.env
+.env.*
 
 # Node
 node_modules/

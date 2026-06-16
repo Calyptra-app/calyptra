@@ -26,10 +26,10 @@ export default function Footer() {
                 <div className="flex flex-col sm:flex-row gap-12 sm:gap-20 font-sans text-sm">
                     <div className="flex flex-col gap-4">
                         <span className="font-mono text-[10px] text-white/35 tracking-widest uppercase mb-1">Resources</span>
-                        <a href={REPO_URL} target="_blank" rel="noreferrer" className="font-outfit text-white/70 hover:text-coral transition-colors">GitHub repository</a>
-                        <a href={PRIVACY_URL} target="_blank" rel="noreferrer" className="font-outfit text-white/70 hover:text-coral transition-colors">Privacy</a>
-                        <a href={ATTRIBUTIONS_URL} target="_blank" rel="noreferrer" className="font-outfit text-white/70 hover:text-coral transition-colors">Attributions</a>
-                        <a href={LICENSE_URL} target="_blank" rel="noreferrer" className="font-outfit text-white/70 hover:text-coral transition-colors">License (AGPL-3.0)</a>
+                        <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className="font-outfit text-white/70 hover:text-coral transition-colors">GitHub repository</a>
+                        <a href={PRIVACY_URL} target="_blank" rel="noopener noreferrer" className="font-outfit text-white/70 hover:text-coral transition-colors">Privacy</a>
+                        <a href={ATTRIBUTIONS_URL} target="_blank" rel="noopener noreferrer" className="font-outfit text-white/70 hover:text-coral transition-colors">Attributions</a>
+                        <a href={LICENSE_URL} target="_blank" rel="noopener noreferrer" className="font-outfit text-white/70 hover:text-coral transition-colors">License (AGPL-3.0)</a>
                     </div>
                     <div className="flex flex-col gap-4 sm:text-right">
                         <span className="font-mono text-[10px] text-white/35 tracking-widest uppercase mb-1">System info</span>

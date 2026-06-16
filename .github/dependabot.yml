@@ -1,0 +1,13 @@
+version: 2
+updates:
+  # Keep GitHub Actions pinned SHAs current.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # Keep the landing site npm dependencies current.
+  - package-ecosystem: "npm"
+    directory: "/site"
+    schedule:
+      interval: "weekly"

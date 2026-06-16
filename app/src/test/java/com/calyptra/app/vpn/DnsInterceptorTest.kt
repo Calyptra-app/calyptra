@@ -509,6 +509,30 @@ class DnsInterceptorTest {
         assertEquals(Verdict.Allow, verdict)
     }
 
+    @Test
+    fun `processDnsPacket returns null for a QNAME longer than 253 bytes`() {
+        // A crafted multi-KB name must never reach the matcher: the parser caps
+        // the assembled name at the DNS max (253) and falls through to forward.
+        // Track every label that would otherwise be reported as blocked so we can
+        // assert the matcher was never consulted with the oversized name.
+        val seen = mutableListOf<String>()
+        val interceptor = makeInterceptor(isAdBlocked = { domain ->
+            seen.add(domain)
+            false
+        })
+
+        // 5 labels of 63 'a's joined by dots = 5*63 + 4 = 319 bytes — over 253.
+        // (Stays within createDnsQuery's 512-byte builder.)
+        val label = "a".repeat(63)
+        val oversized = List(5) { label }.joinToString(".")
+
+        val query = createDnsQuery(oversized)
+        val response = interceptor.processDnsPacket(ByteBuffer.wrap(query))
+
+        assertNull("Oversized QNAME must be forwarded (null), not matched", response)
+        assertTrue("Matcher must not be consulted with an oversized name", seen.isEmpty())
+    }
+
     private fun createDnsQuery(domain: String, queryType: Int = 1): ByteArray {
         val buffer = ByteBuffer.allocate(512)
         // Header

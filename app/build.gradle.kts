@@ -4,6 +4,16 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+// Release signing credentials come from env vars (CI) or ~/.gradle/gradle.properties (local).
+// There is deliberately NO hardcoded fallback: a release built without these fails loudly
+// (see the taskGraph check at the bottom) rather than silently signing with a weak default.
+val releaseStorePassword: String? = System.getenv("KEYSTORE_PASSWORD") ?: (findProperty("KEYSTORE_PASSWORD") as String?)
+val releaseKeyPassword: String? = System.getenv("KEY_PASSWORD") ?: (findProperty("KEY_PASSWORD") as String?)
+val releaseStoreFilePath: String = System.getenv("KEYSTORE_FILE")
+    ?: (findProperty("KEYSTORE_FILE") as String?)
+    ?: "${System.getProperty("user.home")}/keystores/calyptra-release.keystore"
+val releaseKeyAlias: String = System.getenv("KEY_ALIAS") ?: (findProperty("KEY_ALIAS") as String?) ?: "calyptra"
+
 android {
     namespace = "com.calyptra.app"
     compileSdk = 34
@@ -24,12 +34,11 @@ android {
     signingConfigs {
         create("release") {
             // keytool -genkey -v -keystore ~/keystores/calyptra-release.keystore -alias calyptra -keyalg RSA -keysize 2048 -validity 10000
-            // Keystore lives outside the repo on purpose — never commit it.
-            storeFile = file(System.getenv("KEYSTORE_FILE")
-                ?: "${System.getProperty("user.home")}/keystores/calyptra-release.keystore")
-            storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "password"
-            keyAlias = System.getenv("KEY_ALIAS") ?: "calyptra"
-            keyPassword = System.getenv("KEY_PASSWORD") ?: "password"
+            // Keystore lives outside the repo on purpose; never commit it.
+            storeFile = file(releaseStoreFilePath)
+            storePassword = releaseStorePassword
+            keyAlias = releaseKeyAlias
+            keyPassword = releaseKeyPassword
         }
     }
 
@@ -108,4 +117,20 @@ dependencies {
     androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+}
+
+// Fail fast if a release is built without real signing credentials, instead of
+// silently signing with a weak default. Only fires for release packaging tasks,
+// so debug builds and IDE sync are unaffected.
+gradle.taskGraph.whenReady {
+    val buildingRelease = allTasks.any { task ->
+        val n = task.name
+        (n.startsWith("assemble") || n.startsWith("bundle") || n.startsWith("package")) && n.contains("Release")
+    }
+    if (buildingRelease && (releaseStorePassword.isNullOrEmpty() || releaseKeyPassword.isNullOrEmpty())) {
+        throw GradleException(
+            "Release signing requires KEYSTORE_PASSWORD and KEY_PASSWORD (env vars or gradle properties). " +
+                "Refusing to sign a release with a missing or weak default password."
+        )
+    }
 }

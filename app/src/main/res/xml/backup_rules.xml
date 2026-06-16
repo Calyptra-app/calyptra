@@ -2,4 +2,9 @@
 <full-backup-content>
     <include domain="sharedpref" path="."/>
     <include domain="database" path="."/>
+    <!-- Legacy fullBackupContent (used pre-Android 12). Moot now that
+         allowBackup="false", but kept consistent with data_extraction_rules:
+         the "file" domain is already not included above, and we explicitly
+         exclude the parental PIN material to be safe. -->
+    <exclude domain="file" path="datastore/settings.preferences_pb"/>
 </full-backup-content>
