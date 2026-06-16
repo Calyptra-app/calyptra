@@ -58,6 +58,8 @@ import com.calyptra.app.ui.theme.CalyptraTheme
 private const val URL_SOURCE = "https://github.com/Calyptra-app/calyptra"
 private const val URL_LICENSE = "https://github.com/Calyptra-app/calyptra/blob/main/LICENSE"
 private const val URL_PRIVACY = "https://github.com/Calyptra-app/calyptra/blob/main/PRIVACY.md"
+// Optional, no-pressure tip jar. Ko-fi supports guest checkout (no account needed).
+private const val URL_SUPPORT = "https://ko-fi.com/gkastanis"
 
 /**
  * The parent's world (F12 §5), reached only through the PIN-gated gear on the
@@ -311,6 +313,11 @@ fun ParentSettingsContent(
                     title = stringResource(R.string.about_privacy_title),
                     description = stringResource(R.string.about_privacy_desc),
                     onClick = { onOpenUrl(URL_PRIVACY) }
+                )
+                SettingNavRow(
+                    title = stringResource(R.string.about_support_title),
+                    description = stringResource(R.string.about_support_desc),
+                    onClick = { onOpenUrl(URL_SUPPORT) }
                 )
             }
 
