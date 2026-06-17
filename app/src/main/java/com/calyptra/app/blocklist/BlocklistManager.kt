@@ -98,20 +98,23 @@ class BlocklistManager(private val context: Context) {
         }
     }
     
-    suspend fun saveUpdate(newDomains: Set<String>) = withContext(Dispatchers.IO) {
+    /** Persists a downloaded ad/tracker update, replacing the cached list.
+     *  Returns false (leaving the previous cache untouched) when the update is
+     *  implausibly small per [BlocklistUpdatePolicy] — a truncated/hijacked feed
+     *  must never silently shrink protection. */
+    suspend fun saveUpdate(newDomains: Set<String>): Boolean = withContext(Dispatchers.IO) {
         val file = File(context.filesDir, "updated_blocklist.txt")
+        if (!BlocklistUpdatePolicy.isPlausibleUpdate(newDomains.size, loadCachedUpdates().size)) {
+            return@withContext false
+        }
         val capped = if (newDomains.size > MAX_REMOTE_DOMAINS) {
             newDomains.take(MAX_REMOTE_DOMAINS).toSet()
         } else {
             newDomains
         }
-        file.bufferedWriter().use { writer ->
-            capped.forEach { domain ->
-                writer.write(domain)
-                writer.newLine()
-            }
-        }
+        writeAtomically(file, capped)
         initialize() // Reload
+        true
     }
 
     suspend fun loadBundledThreatlist(): Set<String> = withContext(Dispatchers.IO) {
@@ -138,19 +141,43 @@ class BlocklistManager(private val context: Context) {
         }
     }
 
-    suspend fun saveThreatUpdate(newDomains: Set<String>) = withContext(Dispatchers.IO) {
+    /** Persists a downloaded threat update, replacing the cached threat list.
+     *  Returns false (leaving the previous cache untouched) when the update is
+     *  implausibly small per [BlocklistUpdatePolicy]. */
+    suspend fun saveThreatUpdate(newDomains: Set<String>): Boolean = withContext(Dispatchers.IO) {
         val file = File(context.filesDir, "updated_threatlist.txt")
+        if (!BlocklistUpdatePolicy.isPlausibleUpdate(newDomains.size, loadCachedThreatUpdates().size)) {
+            return@withContext false
+        }
         val capped = if (newDomains.size > MAX_THREAT_DOMAINS) {
             newDomains.take(MAX_THREAT_DOMAINS).toSet()
         } else {
             newDomains
         }
-        file.bufferedWriter().use { writer ->
-            capped.forEach { domain ->
+        writeAtomically(file, capped)
+        initialize() // Reload
+        true
+    }
+
+    /** Writes [domains] one-per-line to [file] via a temp file + rename so a
+     *  crash mid-write can never leave a partially-written (and thus shrunken)
+     *  cache behind. On Android's internal storage the rename replaces the
+     *  destination atomically. */
+    private fun writeAtomically(file: File, domains: Set<String>) {
+        val tmp = File(file.parentFile, "${file.name}.tmp")
+        tmp.bufferedWriter().use { writer ->
+            domains.forEach { domain ->
                 writer.write(domain)
                 writer.newLine()
             }
         }
-        initialize() // Reload
+        if (!tmp.renameTo(file)) {
+            // Some filesystems won't rename onto an existing file; replace it.
+            file.delete()
+            if (!tmp.renameTo(file)) {
+                tmp.delete()
+                throw java.io.IOException("Failed to commit blocklist cache: ${file.name}")
+            }
+        }
     }
 }
