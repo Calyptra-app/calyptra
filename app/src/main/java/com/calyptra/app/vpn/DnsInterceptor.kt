@@ -51,8 +51,13 @@ class DnsInterceptor(
                     break // End of name
                 }
                 if ((length and 0xC0) == 0xC0) {
-                    // Compression pointer, not expected in query name usually
-                    return null 
+                    // A query never legitimately compresses its own question name
+                    // (there is nothing earlier to point at). A 0xC0 pointer here
+                    // is a crafted packet trying to slip an unparseable QNAME past
+                    // the blocklist/threat filter — which previously returned null
+                    // (forward/allow). Fail CLOSED instead: answer NXDOMAIN,
+                    // echoing the client's own bytes since we can't parse the name.
+                    return constructNxdomainResponse(request = data, questionEnd = data.size)
                 }
                 offset++
                 if (offset + length > data.size) return null
