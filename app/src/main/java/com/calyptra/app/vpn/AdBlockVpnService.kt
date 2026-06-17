@@ -10,6 +10,7 @@ import android.util.Log
 import com.calyptra.app.CalyptraApp
 import com.calyptra.app.MainActivity
 import com.calyptra.app.R
+import com.calyptra.app.vpn.dot.DotResolver
 import com.calyptra.app.worker.VpnWatchdogScheduler
 import com.calyptra.app.worker.VpnWatchdogWorker
 import kotlinx.coroutines.*
@@ -22,6 +23,7 @@ import java.io.FileOutputStream
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
+import java.net.Socket
 import java.nio.ByteBuffer
 
 class AdBlockVpnService : VpnService() {
@@ -46,6 +48,11 @@ class AdBlockVpnService : VpnService() {
      *  retries). Permits are released in handleDnsRequest's finally, exactly once
      *  per successful acquire. */
     private val inFlightDnsGate = Semaphore(MAX_INFLIGHT_DNS)
+
+    /** Encrypted upstream transport (DNS-over-TLS). Recreated per protection
+     *  session in startVpn and closed in stopVpn so pooled TLS sockets don't leak
+     *  across a stop/start. Allowed queries try DoT first and fail open to UDP. */
+    @Volatile private var dotResolver: DotResolver? = null
 
     private val blocklistManager by lazy { (applicationContext as CalyptraApp).blocklistManager }
     private val categoryBlockManager by lazy { (applicationContext as CalyptraApp).categoryBlockManager }
@@ -117,6 +124,10 @@ class AdBlockVpnService : VpnService() {
         val freshScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
         scope = freshScope
         stopping = false
+        // Fresh DoT transport for this session; close any pooled sockets from a
+        // previous start. protect() routes its TCP sockets around our own tunnel.
+        dotResolver?.close()
+        dotResolver = DotResolver(DOT_ENDPOINTS, protect = { socket: Socket -> protect(socket) })
         job = freshScope.launch {
             try {
                 stopping = false
@@ -447,7 +458,14 @@ class AdBlockVpnService : VpnService() {
     }
 
     private suspend fun queryUpstream(dnsData: ByteArray): ByteArray? = withContext(Dispatchers.IO) {
-        queryDnsServer(dnsData, PRIMARY_DNS) ?: queryDnsServer(dnsData, FALLBACK_DNS)
+        // Encrypted DoT first (CleanBrowsing Family — filtering is preserved by the
+        // named TLS profile). Fail OPEN to plain UDP on the same filtering resolvers
+        // so a DoT outage/restrictive network never black-holes the child's DNS;
+        // only encryption is lost while DoT is down. Both transports validate the
+        // answer against the query (DnsResponseValidator).
+        dotResolver?.query(dnsData)
+            ?: queryDnsServer(dnsData, PRIMARY_DNS)
+            ?: queryDnsServer(dnsData, FALLBACK_DNS)
     }
 
     private fun queryDnsServer(dnsData: ByteArray, server: String): ByteArray? {
@@ -541,6 +559,8 @@ class AdBlockVpnService : VpnService() {
             scope?.cancel()
             vpnInterface?.close()
             vpnInterface = null
+            // Close pooled DoT TLS sockets so they don't leak past teardown.
+            dotResolver?.close()
         }
         (applicationContext as CalyptraApp).networkMonitor.stopWatching()
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -589,5 +609,17 @@ class AdBlockVpnService : VpnService() {
         private const val TAG = "AdBlockVpnService"
         private const val PRIMARY_DNS = "185.228.168.168"  // CleanBrowsing Family
         private const val FALLBACK_DNS = "1.1.1.3"         // Cloudflare Families
+
+        /** DoT endpoints (port 853). CleanBrowsing's Family profile is selected by
+         *  the TLS hostname, so adult filtering is guaranteed over the encrypted
+         *  link — unlike Cloudflare 1.1.1.3, whose IP-selected filtering is not
+         *  reliably applied over DoT, so it stays on the UDP fallback only.
+         *  Addressed by IP (cert verified against the hostname) to avoid a DNS
+         *  bootstrap loop. */
+        private const val CLEANBROWSING_FAMILY_DOT_HOST = "family-filter-dns.cleanbrowsing.org"
+        private val DOT_ENDPOINTS = listOf(
+            DotResolver.DotEndpoint("185.228.168.168", CLEANBROWSING_FAMILY_DOT_HOST),
+            DotResolver.DotEndpoint("185.228.169.168", CLEANBROWSING_FAMILY_DOT_HOST),
+        )
     }
 }
