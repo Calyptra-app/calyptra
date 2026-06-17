@@ -457,18 +457,22 @@ class AdBlockVpnService : VpnService() {
             protect(socket)
             socket.soTimeout = 2500
 
-            val outPacket = DatagramPacket(dnsData, dnsData.size, InetAddress.getByName(server), 53)
-            socket.send(outPacket)
+            // Connect so the kernel only delivers datagrams from this resolver: an
+            // off-path attacker can no longer race a forged reply from a different
+            // source address/port onto our ephemeral socket.
+            socket.connect(InetAddress.getByName(server), 53)
+            socket.send(DatagramPacket(dnsData, dnsData.size))
 
             val responseBuffer = ByteArray(4096)
             val inPacket = DatagramPacket(responseBuffer, responseBuffer.size)
             socket.receive(inPacket)
 
             val response = inPacket.data.copyOf(inPacket.length)
-            // Bounded defense against off-path/blind UDP spoofing: only forward an
-            // upstream answer that actually matches the query we sent (transaction
-            // ID + QR bit). Anything else is dropped, not relayed to the client.
-            if (!matchesQuery(dnsData, response)) {
+            // Defense against off-path/blind UDP spoofing: only forward an upstream
+            // answer that matches the query we sent — transaction ID, QR bit, and
+            // the full question section echoed back. Anything else is dropped, not
+            // relayed to the client.
+            if (!DnsResponseValidator.matches(dnsData, response)) {
                 Log.w(TAG, "Dropping upstream DNS response: does not match query ($server)")
                 null
             } else {
@@ -479,20 +483,6 @@ class AdBlockVpnService : VpnService() {
         } finally {
             socket?.close()
         }
-    }
-
-    /** True when [response] is a plausible answer to the query [query] we sent
-     *  upstream: same DNS transaction ID (bytes 0-1) and the QR bit set (high bit
-     *  of byte 2 indicates a response). Both buffers are bounds-checked so a
-     *  short/garbage upstream payload is treated as a non-match (dropped). */
-    private fun matchesQuery(query: ByteArray, response: ByteArray): Boolean {
-        // DNS header is 12 bytes; we only need the first 3 here.
-        if (query.size < 3 || response.size < 3) return false
-        // Transaction ID must match.
-        if (query[0] != response[0] || query[1] != response[1]) return false
-        // QR bit (0x80 of byte 2) must indicate a response.
-        if ((response[2].toInt() and 0x80) == 0) return false
-        return true
     }
 
     private fun constructIpUdpResponse(request: ByteBuffer, dnsPayload: ByteBuffer, ipHeaderLength: Int): ByteArray {
