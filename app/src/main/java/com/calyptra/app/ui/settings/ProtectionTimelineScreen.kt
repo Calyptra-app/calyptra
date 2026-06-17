@@ -24,7 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -58,7 +58,7 @@ fun ProtectionTimelineScreen(
     viewModel: TimelineViewModel = viewModel(),
     modifier: Modifier = Modifier
 ) {
-    val days by viewModel.days.collectAsState()
+    val days by viewModel.days.collectAsStateWithLifecycle()
     ProtectionTimelineContent(days = days, onBack = onBack, modifier = modifier)
 }
 

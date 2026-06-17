@@ -4,7 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -84,7 +84,7 @@ class MainActivity : ComponentActivity() {
 
                 // Hosted once above the NavHost: any screen can trigger the
                 // PIN gate (PIN-L2/L3).
-                val pinPrompt by viewModel.pinPrompt.collectAsState()
+                val pinPrompt by viewModel.pinPrompt.collectAsStateWithLifecycle()
                 pinPrompt?.let { prompt ->
                     PinPromptDialog(
                         state = prompt,
