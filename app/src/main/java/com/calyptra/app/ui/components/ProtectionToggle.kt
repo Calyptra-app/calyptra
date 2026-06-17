@@ -29,8 +29,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
@@ -69,7 +69,7 @@ fun ProtectionToggle(
     )
 
     // Soft breathing halo while protected; static ring when off.
-    val haloScale by rememberInfiniteTransition(label = "halo").animateFloat(
+    val haloScale = rememberInfiniteTransition(label = "halo").animateFloat(
         initialValue = 1f,
         targetValue = if (isEnabled) 1.12f else 1f,
         animationSpec = InfiniteRepeatableSpec(
@@ -81,7 +81,7 @@ fun ProtectionToggle(
 
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
-    val pressScale by animateFloatAsState(
+    val pressScale = animateFloatAsState(
         targetValue = if (pressed) 0.92f else 1f,
         animationSpec = spring(stiffness = Spring.StiffnessMedium),
         label = "pressScale"
@@ -96,13 +96,22 @@ fun ProtectionToggle(
             Box(
                 modifier = Modifier
                     .size(232.dp)
-                    .scale(haloScale)
+                    // Deferred read: the breathing halo runs continuously while
+                    // protected, so read the animated value in the draw phase
+                    // (graphicsLayer block) instead of recomposing every frame.
+                    .graphicsLayer {
+                        scaleX = haloScale.value
+                        scaleY = haloScale.value
+                    }
                     .background(glowColor, CircleShape)
             )
             Box(
                 modifier = Modifier
                     .size(200.dp)
-                    .scale(pressScale)
+                    .graphicsLayer {
+                        scaleX = pressScale.value
+                        scaleY = pressScale.value
+                    }
                     .shadow(elevation = 8.dp, shape = CircleShape)
                     .background(containerColor, CircleShape)
                     .clickable(

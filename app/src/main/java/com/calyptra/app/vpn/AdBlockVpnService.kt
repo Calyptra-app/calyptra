@@ -401,6 +401,8 @@ class AdBlockVpnService : VpnService() {
 
             val responseData = try {
                 queryUpstream(dnsData)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "DNS Resolution failed", e)
                 null
@@ -411,6 +413,11 @@ class AdBlockVpnService : VpnService() {
             // Auto. Answer SERVFAIL so the stub resolver fails fast and can retry.
             val payload = responseData ?: buildServfail(dnsData)
             writeResponse(outputStream, constructIpUdpResponse(requestPacket, ByteBuffer.wrap(payload), ipHeaderLength))
+        } catch (e: CancellationException) {
+            // Reconfigure/stop cancelled this handler mid-flight: propagate so
+            // structured cancellation tears it down promptly, matching the
+            // rethrow style in processPackets — don't do redundant teardown I/O.
+            throw e
         } catch (e: Exception) {
             // The tunnel may have been torn down mid-flight (reconfigure/stop),
             // closing the stream. Swallow so a stale handler can't crash the loop.
