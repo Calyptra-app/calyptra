@@ -81,7 +81,7 @@ GitHub:
 - `https://raw.githubusercontent.com/hagezi/dns-blocklists`
 
 These requests send only a fixed app identifier in the `User-Agent` header (for
-example `Calyptra/1.3.2 (Android)`). They contain **no account, no device
+example `Calyptra/1.4.0 (Android)`). They contain **no account, no device
 identifier, and nothing about your child**. GitHub, as the host, can see the
 request and the requesting IP address, as it can for anyone downloading a file.
 
