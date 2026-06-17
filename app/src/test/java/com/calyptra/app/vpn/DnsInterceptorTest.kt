@@ -533,6 +533,48 @@ class DnsInterceptorTest {
         assertTrue("Matcher must not be consulted with an oversized name", seen.isEmpty())
     }
 
+    @Test
+    fun `processDnsPacket fails closed with NXDOMAIN on a compression-pointer QNAME`() {
+        // A query never legitimately compresses its own question name. A crafted
+        // 0xC0 pointer must be blocked, not forwarded upstream unfiltered — even
+        // when nothing would otherwise match (here every list returns true, but
+        // the parser bails before any verdict is consulted).
+        val seen = mutableListOf<String>()
+        val interceptor = makeInterceptor(
+            isAdBlocked = { seen.add(it); true },
+            isThreatBlocked = { seen.add(it); true }
+        )
+
+        val buffer = ByteBuffer.allocate(64)
+        buffer.putShort(0x1234) // ID
+        buffer.putShort(0x0100) // Flags: RD=1
+        buffer.putShort(0x0001) // QDCOUNT=1
+        buffer.putShort(0x0000) // ANCOUNT
+        buffer.putShort(0x0000) // NSCOUNT
+        buffer.putShort(0x0000) // ARCOUNT
+        buffer.put(0x01)                 // label length 1
+        buffer.put('a'.code.toByte())    // label "a"
+        buffer.put(0xC0.toByte())        // compression pointer high byte
+        buffer.put(0x0C.toByte())        // -> offset 12
+        buffer.putShort(0x0001)          // QTYPE A (never reached)
+        buffer.putShort(0x0001)          // QCLASS IN
+        val query = ByteArray(buffer.position())
+        buffer.position(0)
+        buffer.get(query)
+
+        val response = interceptor.processDnsPacket(ByteBuffer.wrap(query))
+
+        assertNotNull("Compression-pointer query must be blocked, not forwarded", response)
+        val responseBytes = ByteArray(response!!.remaining())
+        response.get(responseBytes)
+
+        assertEquals("QR bit should be set", 0x81.toByte(), responseBytes[2])
+        assertEquals("RCODE should be NXDOMAIN (3)", 0x83.toByte(), responseBytes[3])
+        assertEquals("ANCOUNT must be 0", 0x00.toByte(), responseBytes[6])
+        assertEquals(0x00.toByte(), responseBytes[7])
+        assertTrue("Matcher must not be consulted with an unparseable name", seen.isEmpty())
+    }
+
     private fun createDnsQuery(domain: String, queryType: Int = 1): ByteArray {
         val buffer = ByteBuffer.allocate(512)
         // Header
