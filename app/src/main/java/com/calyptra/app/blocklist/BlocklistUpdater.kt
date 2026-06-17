@@ -26,7 +26,7 @@ class BlocklistUpdater {
         connection.requestMethod = "GET"
         connection.connectTimeout = 10000
         connection.readTimeout = 10000
-        connection.setRequestProperty("User-Agent", "Calyptra/1.3.0 (Android)")
+        connection.setRequestProperty("User-Agent", "Calyptra/1.3.1 (Android)")
 
         try {
             if (connection.responseCode == HttpURLConnection.HTTP_OK) {
