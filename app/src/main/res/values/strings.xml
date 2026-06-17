@@ -116,4 +116,6 @@
     <string name="about_license_desc">GNU AGPL-3.0</string>
     <string name="about_privacy_title">Privacy policy</string>
     <string name="about_privacy_desc">How Calyptra handles data</string>
+    <string name="about_support_title">Support development</string>
+    <string name="about_support_desc">Calyptra is free. Buy us a coffee on Ko-fi</string>
 </resources>
