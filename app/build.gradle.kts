@@ -58,6 +58,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true // exposes VERSION_NAME (used for the blocklist User-Agent)
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.8"
