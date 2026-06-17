@@ -1,5 +1,6 @@
 package com.calyptra.app.ui
 
+import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.calyptra.app.data.PreferencesRepository
@@ -21,6 +22,12 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+/** Marked @Immutable so the Compose compiler treats it as stable: every field
+ *  is a val and the [blockedCategories] set is only ever replaced, never mutated
+ *  in place. Without this, the `Set<String>` field (an interface type the
+ *  compiler can't prove immutable) makes the whole class unstable and stops
+ *  KidHomeContent / ParentSettingsContent from being skippable on recomposition. */
+@Immutable
 data class MainUiState(
     val isProtectionEnabled: Boolean = false,
     val gameAdsAllowed: Boolean = false,
