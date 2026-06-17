@@ -1,5 +1,6 @@
 package com.calyptra.app.blocklist
 
+import com.calyptra.app.BuildConfig
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
@@ -26,7 +27,7 @@ class BlocklistUpdater {
         connection.requestMethod = "GET"
         connection.connectTimeout = 10000
         connection.readTimeout = 10000
-        connection.setRequestProperty("User-Agent", "Calyptra/1.3.2 (Android)")
+        connection.setRequestProperty("User-Agent", "Calyptra/${BuildConfig.VERSION_NAME} (Android)")
 
         try {
             if (connection.responseCode == HttpURLConnection.HTTP_OK) {
