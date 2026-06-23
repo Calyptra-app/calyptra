@@ -18,7 +18,7 @@
     "@fontsource/outfit": "^5.2.8",
     "@fontsource/plus-jakarta-sans": "^5.2.8",
     "gsap": "^3.13.0",
-    "lucide-react": "^0.544.0",
+    "lucide-react": "^1.21.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },
