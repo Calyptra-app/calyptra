@@ -56,7 +56,8 @@ class VpnWatchdogWorker(
         val app = applicationContext as CalyptraApp
         val action = VpnWatchdogPolicy.decide(
             protectionEnabled = app.preferencesRepository.protectionEnabled.first(),
-            vpnRunning = VpnController.isRunning.value,
+            // A start in progress is not an outage: don't restart it or log a gap.
+            vpnRunning = VpnController.isRunning.value || VpnController.isStarting.value,
             permissionHeld = VpnService.prepare(applicationContext) == null,
             // Persisted so the yield survives process death (in-memory state
             // would reset to Stopped and we'd restart, killing the other VPN).

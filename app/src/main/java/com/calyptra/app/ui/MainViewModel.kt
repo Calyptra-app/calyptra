@@ -13,6 +13,7 @@ import com.calyptra.app.system.PowerStatusProvider
 import com.calyptra.app.vpn.NetworkEnvironmentMonitor
 import com.calyptra.app.vpn.VpnController
 import com.calyptra.app.vpn.VpnState
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -57,7 +58,10 @@ class MainViewModel(
     private val pinManager: PinManager,
     private val networkMonitor: NetworkEnvironmentMonitor,
     private val powerStatusProvider: PowerStatusProvider,
-    private val protectionEventRepository: ProtectionEventRepository
+    private val protectionEventRepository: ProtectionEventRepository,
+    /** App-lifetime scope: the enable-then-start sequence must not be lost if
+     *  the screen goes away between the write and the start. */
+    private val appScope: CoroutineScope
 ) : ViewModel() {
 
     /** True when VpnService.prepare() returned non-null on last resume —
@@ -205,7 +209,10 @@ class MainViewModel(
         initialValue = MainUiState()
     )
 
-    fun setProtectionEnabled(enabled: Boolean) {
+    /** [onPersisted] runs once the preference is stored. Start the VPN from it,
+     *  not right after this call: the service reads protectionEnabled on start
+     *  and stops itself if it still sees the old false. */
+    fun setProtectionEnabled(enabled: Boolean, onPersisted: () -> Unit = {}) {
         if (!enabled) {
             // Explicit parent decision consumes a pending Revoked signal (CFT-L1).
             VpnController.acknowledgeRevoked()
@@ -215,11 +222,11 @@ class MainViewModel(
         protectionEventRepository.logAsync(
             if (enabled) ProtectionEventType.ENABLED_USER else ProtectionEventType.DISABLED_PARENT
         )
-        viewModelScope.launch {
-            preferencesRepository.setProtectionEnabled(enabled)
+        appScope.launch {
             // An explicit parent toggle ends any yield to another VPN (CFT-L1):
             // re-enabling means we want the slot back; disabling makes it moot.
-            preferencesRepository.setYieldedToOtherVpn(false)
+            preferencesRepository.setProtectionEnabledByUser(enabled)
+            onPersisted()
         }
     }
 

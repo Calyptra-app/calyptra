@@ -28,6 +28,17 @@ object VpnController {
     private val _alwaysOnActive = MutableStateFlow(false)
     val alwaysOnActive: StateFlow<Boolean> = _alwaysOnActive.asStateFlow()
 
+    /** True while the service is building the tunnel (blocklist load,
+     *  SafeSearch resolution, establish). Not protection yet, so it is NOT
+     *  folded into [isRunning]; the watchdog uses it to avoid restarting a
+     *  start in progress or logging it as an outage. */
+    private val _isStarting = MutableStateFlow(false)
+    val isStarting: StateFlow<Boolean> = _isStarting.asStateFlow()
+
+    fun markStarting(starting: Boolean) {
+        _isStarting.value = starting
+    }
+
     fun updateAlwaysOn(active: Boolean) {
         _alwaysOnActive.value = active
     }
@@ -59,8 +70,11 @@ object VpnController {
         _isRunning.value = state == VpnState.Running
     }
 
-    fun startVpn(context: Context) {
+    /** [userInitiated]: an explicit tap, which bypasses the automatic-restart
+     *  cooldown after repeated packet-loop failures. */
+    fun startVpn(context: Context, userInitiated: Boolean = false) {
         val intent = Intent(context, AdBlockVpnService::class.java)
+            .putExtra(AdBlockVpnService.EXTRA_USER_INITIATED, userInitiated)
         context.startForegroundService(intent)
     }
 

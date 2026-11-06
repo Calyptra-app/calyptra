@@ -34,7 +34,8 @@ class MainActivity : ComponentActivity() {
                 val app = application as CalyptraApp
                 return MainViewModel(
                     app.statsRepository, app.preferencesRepository, app.pinManager,
-                    app.networkMonitor, app.powerStatusProvider, app.protectionEventRepository
+                    app.networkMonitor, app.powerStatusProvider, app.protectionEventRepository,
+                    app.ioScope
                 ) as T
             }
         }
