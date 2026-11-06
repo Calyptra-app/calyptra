@@ -556,7 +556,9 @@ class AdBlockVpnService : VpnService() {
             // Never leave a query hanging. A black-holed lookup forces a client-side
             // timeout and can flip the OS to "no internet" — which breaks Android
             // Auto. Answer SERVFAIL so the stub resolver fails fast and can retry.
-            val payload = responseData ?: buildServfail(dnsData)
+            // Negative answers (e.g. a family-filter block) are cached for at
+            // most a minute, so allowlist changes reach every app quickly.
+            val payload = responseData?.let(NegativeTtlClamp::clamp) ?: buildServfail(dnsData)
             writeResponse(outputStream, IpUdpPacketBuilder.constructIpUdpResponse(requestPacket, ByteBuffer.wrap(payload), ipHeaderLength))
         } catch (e: CancellationException) {
             // Reconfigure/stop cancelled this handler mid-flight: propagate so
