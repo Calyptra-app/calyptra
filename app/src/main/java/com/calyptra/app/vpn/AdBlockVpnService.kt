@@ -104,7 +104,10 @@ class AdBlockVpnService : VpnService() {
 
         startForeground(NOTIFICATION_ID, createNotification())
 
-        if (vpnInterface == null) {
+        // A start already in flight (blocklist load, SafeSearch resolution,
+        // establish) reports not-running until the tunnel is installed, so the
+        // watchdog may ask again meanwhile. Don't cancel and restart it.
+        if (vpnInterface == null && job?.isActive != true) {
             startVpn()
         }
 
@@ -139,7 +142,8 @@ class AdBlockVpnService : VpnService() {
                     return@launch
                 }
 
-                VpnController.updateState(true)
+                // Not reported as running yet: nothing is filtered until the
+                // tunnel is installed below.
                 blocklistManager.initialize() // Ensure loaded
                 safeSearchManager.resolveEndpoints()
 
@@ -184,6 +188,7 @@ class AdBlockVpnService : VpnService() {
                 when {
                     tun == null -> handleStartFailure(null)
                     installTunnel(tun) -> {
+                        VpnController.updateState(true)
                         restartGuard.reset()
                         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
                             VpnController.updateAlwaysOn(isAlwaysOn)
@@ -260,7 +265,37 @@ class AdBlockVpnService : VpnService() {
     }
 
     private fun startPacketLoop(tun: ParcelFileDescriptor) {
-        packetJob = scope?.launch { processPackets(tun) }
+        packetJob = scope?.launch {
+            processPackets(tun)
+            // A planned exit (reconfigure swap, stop) cancels this job before
+            // closing the fd, so the read error that ends the loop is expected.
+            // Still active here means the live tunnel failed on its own.
+            if (isActive) onPacketLoopFailed(tun)
+        }
+    }
+
+    /** The packet loop of [tun] ended without being cancelled: DNS is no longer
+     *  serviced, so protection must not keep reporting Running (the watchdog
+     *  would trust it and never recover). Rebuild in place, bounded by its own
+     *  crash-loop guard; once exhausted, fall back to the start-failure path
+     *  (stop + alert the parent). */
+    private fun onPacketLoopFailed(tun: ParcelFileDescriptor) {
+        synchronized(tunnelLock) {
+            if (stopping || vpnInterface !== tun) return
+            vpnInterface = null
+            tun.close()
+        }
+        VpnController.updateState(false)
+        Log.e(TAG, "Packet loop ended unexpectedly; tunnel torn down")
+        if (packetLoopGuard.shouldRetryAfterFailure()) {
+            // Under the lock so a stop landing in between can't be undone by
+            // startVpn() resetting `stopping`.
+            synchronized(tunnelLock) {
+                if (!stopping) startVpn()
+            }
+        } else {
+            handleStartFailure(IllegalStateException("Packet loop keeps failing"))
+        }
     }
 
     /** Rebuilds the live tunnel in place after a per-app routing change, without
@@ -606,6 +641,10 @@ class AdBlockVpnService : VpnService() {
 
         // Process-wide so the 5-min failure window survives service restarts.
         private val restartGuard = RestartGuard()
+        // Separate from restartGuard, which a successful establish() resets: a
+        // tunnel that installs fine but whose reads keep failing must still
+        // trip the breaker instead of rebuilding forever.
+        private val packetLoopGuard = RestartGuard()
         private const val TAG = "AdBlockVpnService"
         private const val PRIMARY_DNS = "185.228.168.168"  // CleanBrowsing Family
         private const val FALLBACK_DNS = "1.1.1.3"         // Cloudflare Families

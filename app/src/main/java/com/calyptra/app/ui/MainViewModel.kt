@@ -183,7 +183,10 @@ class MainViewModel(
         initialValue = MainUiState()
     )
 
-    fun setProtectionEnabled(enabled: Boolean) {
+    /** [onPersisted] runs once the preference is stored. Start the VPN from it,
+     *  not right after this call: the service reads protectionEnabled on start
+     *  and stops itself if it still sees the old false. */
+    fun setProtectionEnabled(enabled: Boolean, onPersisted: () -> Unit = {}) {
         if (!enabled) {
             // Explicit parent decision consumes a pending Revoked signal (CFT-L1).
             VpnController.acknowledgeRevoked()
@@ -198,6 +201,7 @@ class MainViewModel(
             // An explicit parent toggle ends any yield to another VPN (CFT-L1):
             // re-enabling means we want the slot back; disabling makes it moot.
             preferencesRepository.setYieldedToOtherVpn(false)
+            onPersisted()
         }
     }
 
