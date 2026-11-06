@@ -88,6 +88,11 @@ class MainViewModel(
 
     private var pendingAuthorized: (() -> Unit)? = null
 
+    /** Identifies the open prompt. Bumped on every new prompt and on dismiss,
+     *  so a submit still in flight when the prompt was dismissed (e.g. on
+     *  background) or replaced can't run a callback it wasn't entered for. */
+    private var promptRequest = 0
+
     /** Routes a protection-reducing action through the PIN gate (PIN-L3).
      *  onAuthorized runs immediately during a grace session, after PIN setup,
      *  or after a successful challenge. Enabling protection must never call this. */
@@ -96,10 +101,12 @@ class MainViewModel(
             when (PinGateReducer.decide(action, pinManager.isPinSet(), pinManager.isInGraceSession())) {
                 PinGateDecision.Proceed -> onAuthorized()
                 PinGateDecision.RequireSetup -> {
+                    promptRequest++
                     pendingAuthorized = onAuthorized
                     _pinPrompt.value = PinPromptState(action, isSetup = true)
                 }
                 PinGateDecision.RequireChallenge -> {
+                    promptRequest++
                     pendingAuthorized = onAuthorized
                     _pinPrompt.value = PinPromptState(action, isSetup = false)
                 }
@@ -108,15 +115,20 @@ class MainViewModel(
     }
 
     fun submitPinSetup(pin: String) {
+        val request = promptRequest
         viewModelScope.launch {
             pinManager.setPin(pin)
+            if (request != promptRequest) return@launch
             consumePendingAction()
         }
     }
 
     fun submitPinChallenge(pin: String) {
+        val request = promptRequest
         viewModelScope.launch {
-            when (val result = pinManager.verify(pin)) {
+            val result = pinManager.verify(pin)
+            if (request != promptRequest) return@launch
+            when (result) {
                 VerifyResult.Ok -> consumePendingAction()
                 is VerifyResult.Wrong -> _pinPrompt.update {
                     it?.copy(attemptsLeft = result.attemptsLeft, lockedUntilMillis = null)
@@ -129,6 +141,7 @@ class MainViewModel(
     }
 
     fun dismissPinPrompt() {
+        promptRequest++
         pendingAuthorized = null
         _pinPrompt.value = null
     }
