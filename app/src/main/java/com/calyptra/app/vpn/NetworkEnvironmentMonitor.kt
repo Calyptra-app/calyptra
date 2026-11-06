@@ -33,15 +33,17 @@ class NetworkEnvironmentMonitor(context: Context) {
 
     /** True when another app's VPN is up. Side-effect free, unlike
      *  VpnService.prepare(), which for an already-consented app SWITCHES the
-     *  active VPN to us and disconnects the other one (#80). On API 29+ our
-     *  own tunnel is excluded by owner uid; below that, callers only ask
-     *  while ours is stopped. */
+     *  active VPN to us and disconnects the other one (#80). On API 30+ our
+     *  own tunnel is excluded by owner uid (getOwnerUid() is API 30; calling
+     *  it on Android 10 throws NoSuchMethodError). Below that every VPN counts,
+     *  which is safe because every caller acts on it only while ours is down
+     *  (conflict banner: Stopped state; watchdog/boot: not running). */
     fun isOtherVpnActive(): Boolean {
         @Suppress("DEPRECATION") // allNetworks: no non-callback replacement for a one-shot read
         return connectivityManager.allNetworks.any { network ->
             val caps = connectivityManager.getNetworkCapabilities(network) ?: return@any false
             caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) &&
-                (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || caps.ownerUid != Process.myUid())
+                (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || caps.ownerUid != Process.myUid())
         }
     }
 

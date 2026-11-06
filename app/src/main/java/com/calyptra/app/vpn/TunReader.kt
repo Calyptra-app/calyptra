@@ -4,6 +4,11 @@ import android.system.ErrnoException
 import android.system.Os
 import android.system.OsConstants
 import android.system.StructPollfd
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.Closeable
 import java.io.FileDescriptor
 
@@ -99,3 +104,19 @@ internal class TunReader(private val tun: FileDescriptor) : Closeable {
             OsConstants.POLLERR or OsConstants.POLLHUP or OsConstants.POLLNVAL
     }
 }
+
+/**
+ * Runs [action] when this scope is cancelled, from the cancelling thread.
+ *
+ * A plain `launch { try { awaitCancellation() } finally { action() } }` misses
+ * cancellations that land before the child is first dispatched (its body never
+ * runs, so neither does the finally) and, under a saturated dispatcher, runs
+ * late. Here the child starts UNDISPATCHED, registering the handler before this
+ * call returns, and invokeOnCancellation fires synchronously on cancel (or
+ * immediately if already cancelled), needing no free thread. Cancel the
+ * returned job to unregister when the guarded work ends on its own.
+ */
+internal fun CoroutineScope.onCancellation(action: () -> Unit): Job =
+    launch(start = CoroutineStart.UNDISPATCHED) {
+        suspendCancellableCoroutine<Unit> { cont -> cont.invokeOnCancellation { action() } }
+    }
