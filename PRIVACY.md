@@ -88,13 +88,16 @@ request and the requesting IP address, as it can for anyone downloading a file.
 ### 3.2 DNS lookups for allowed sites (please read this)
 
 When your child visits a site that is **not** blocked, the device still has to
-look up that site's address. Calyptra forwards these DNS lookups to two
-third-party "family-safe" DNS resolvers:
+look up that site's address. Calyptra forwards these DNS lookups to
+third-party DNS resolvers:
 
-- **CleanBrowsing Family** — `185.228.168.168` (primary) —
-  <https://cleanbrowsing.org/privacy/>
-- **Cloudflare for Families** — `1.1.1.3` (fallback) —
-  <https://www.cloudflare.com/privacypolicy/>
+- **CleanBrowsing Family** — `185.228.168.168` and `185.228.169.168` (primary,
+  family filter) — <https://cleanbrowsing.org/privacy/>
+- **Cloudflare for Families** — `1.1.1.3` (fallback, only if CleanBrowsing
+  can't be reached) — <https://www.cloudflare.com/privacypolicy/>
+- **Cloudflare Security** — `1.1.1.2` and `1.0.0.2` (only for sites a parent
+  added to the allowed-sites list; blocks malware and phishing but no other
+  content) — <https://www.cloudflare.com/privacypolicy/>
 
 This is the same kind of DNS lookup that happens on **any** internet connection.
 As a result, **the DNS resolver you use and your network/ISP can see the stream

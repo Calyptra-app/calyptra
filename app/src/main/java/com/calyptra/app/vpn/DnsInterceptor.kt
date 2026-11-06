@@ -10,9 +10,15 @@ import java.nio.ByteBuffer
  *   sinkhole, threat/category NXDOMAIN, or the DoH canary. SafeSearch redirects
  *   and the NODATA answers that go with them are rewrites, not blocks (#67).
  */
-class DnsInterceptResult(val response: ByteBuffer?, val countsAsBlocked: Boolean) {
+class DnsInterceptResult(
+    val response: ByteBuffer?,
+    val countsAsBlocked: Boolean,
+    /** Forward to the malware-only allowlist resolver, not the family filter. */
+    val unfiltered: Boolean = false,
+) {
     companion object {
         val FORWARD = DnsInterceptResult(null, countsAsBlocked = false)
+        val FORWARD_UNFILTERED = DnsInterceptResult(null, countsAsBlocked = false, unfiltered = true)
         fun blocked(response: ByteBuffer) = DnsInterceptResult(response, countsAsBlocked = true)
         fun rewritten(response: ByteBuffer) = DnsInterceptResult(response, countsAsBlocked = false)
     }
@@ -122,6 +128,7 @@ class DnsInterceptor(
             val questionEnd = offset + 4
             return when (val verdict = resolveVerdict(domain, queryType)) {
                 Verdict.Allow -> DnsInterceptResult.FORWARD
+                Verdict.AllowUnfiltered -> DnsInterceptResult.FORWARD_UNFILTERED
                 Verdict.BlockZeroIp -> DnsInterceptResult.blocked(
                     constructBlockedResponse(request = data, questionEnd = questionEnd)
                 )
