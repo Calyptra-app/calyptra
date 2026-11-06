@@ -25,6 +25,14 @@ internal object DotConnectionPolicy {
     const val MAX_IDLE_CONNECTIONS = 4
 
     /**
+     * Max connections in use at once (borrowed by a query or mid connect/handshake).
+     * Bounds sockets and concurrent TLS handshakes during a DNS burst (the VPN
+     * allows far more concurrent handlers than this) while leaving enough
+     * parallelism for warm exchanges that each take tens of milliseconds.
+     */
+    const val MAX_ACTIVE_CONNECTIONS = 8
+
+    /**
      * True if a connection last used at [idleSinceMs] may still be reused at
      * [nowMs]. A non-positive elapsed time (clock moved backwards / skew) is
      * treated as not reusable — fall through to a fresh, known-good connection
