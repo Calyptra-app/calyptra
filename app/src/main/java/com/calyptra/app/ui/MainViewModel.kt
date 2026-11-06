@@ -41,7 +41,9 @@ data class MainUiState(
     val batteryExempt: Boolean = true,
     val alwaysOnActive: Boolean = false,
     val batteryPromptShown: Boolean = true,
-    val blockedCategories: Set<String> = emptySet()
+    val blockedCategories: Set<String> = emptySet(),
+    /** Parent alerts can actually be shown (#64). */
+    val notificationsAllowed: Boolean = true
 )
 
 /** Active PIN dialog, if any. isSetup=true shows the create-PIN flow. */
@@ -72,15 +74,20 @@ class MainViewModel(
     /** Live battery-exemption status, refreshed on resume (PWR-L3). */
     private val batteryExempt = MutableStateFlow(true)
 
+    /** Live notification permission/setting, refreshed on resume (#64). */
+    private val notificationsAllowed = MutableStateFlow(true)
+
     /** Called from the UI on every ON_RESUME to refresh conflict inputs. */
     fun onResumed() {
         vpnPermissionHeldByOther.value = networkMonitor.isOtherVpnActive()
         batteryExempt.value = powerStatusProvider.isIgnoringBatteryOptimizations()
+        notificationsAllowed.value = powerStatusProvider.areNotificationsAllowed()
         networkMonitor.refresh()
     }
 
     fun batteryExemptionIntent() = powerStatusProvider.requestExemptionIntent()
     fun vpnSettingsIntent() = powerStatusProvider.vpnSettingsIntent()
+    fun notificationSettingsIntent() = powerStatusProvider.notificationSettingsIntent()
 
     fun markBatteryPromptShown() {
         viewModelScope.launch {
@@ -183,7 +190,8 @@ class MainViewModel(
         batteryExempt,
         VpnController.alwaysOnActive,
         preferencesRepository.batteryPromptShown,
-        preferencesRepository.blockedCategories
+        preferencesRepository.blockedCategories,
+        notificationsAllowed
     ) { values ->
         MainUiState(
             isProtectionEnabled = values[0] as Boolean,
@@ -202,7 +210,8 @@ class MainViewModel(
             batteryExempt = values[11] as Boolean,
             alwaysOnActive = values[12] as Boolean,
             batteryPromptShown = values[13] as Boolean,
-            blockedCategories = values[14] as Set<String>
+            blockedCategories = values[14] as Set<String>,
+            notificationsAllowed = values[15] as Boolean
         )
     }.stateIn(
         scope = viewModelScope,

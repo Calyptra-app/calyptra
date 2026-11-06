@@ -46,6 +46,9 @@
     <string name="battery_hint_desc">Allow Calyptra to ignore battery optimizations so the system doesn\'t stop it</string>
     <string name="battery_prompt_message">To keep your child protected, allow Calyptra to ignore battery optimizations. Otherwise some phones stop protection after a few hours.</string>
     <string name="battery_allow">Allow</string>
+    <string name="alerts_hint_title">Parent alerts are off</string>
+    <string name="alerts_hint_desc">Turn on notifications so Calyptra can tell you if protection stops or another app takes over</string>
+    <string name="alerts_allow">Turn on</string>
     <string name="battery_later">Later</string>
     <string name="alwayson_hint_title">Always-on VPN is off</string>
     <string name="alwayson_hint_desc">Turn it on in VPN settings for the strongest protection</string>

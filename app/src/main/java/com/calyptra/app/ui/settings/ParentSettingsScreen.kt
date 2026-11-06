@@ -121,6 +121,7 @@ fun ParentSettingsScreen(
         onTimelineClick = onNavigateToTimeline,
         onBatteryAllow = { context.startActivity(viewModel.batteryExemptionIntent()) },
         onOpenVpnSettings = { context.startActivity(viewModel.vpnSettingsIntent()) },
+        onAllowNotifications = { runCatching { context.startActivity(viewModel.notificationSettingsIntent()) } },
         onOpenUrl = { url ->
             // No-op if the device has no browser, rather than crashing on ActivityNotFound.
             runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
@@ -144,6 +145,7 @@ fun ParentSettingsContent(
     onTimelineClick: () -> Unit,
     onBatteryAllow: () -> Unit,
     onOpenVpnSettings: () -> Unit,
+    onAllowNotifications: () -> Unit,
     onOpenUrl: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -243,8 +245,20 @@ fun ParentSettingsContent(
             }
 
             // Protection health (PWR-L3): each hint only while relevant.
-            if (!uiState.batteryExempt || (uiState.isProtectionEnabled && !uiState.alwaysOnActive)) {
+            if (!uiState.batteryExempt || !uiState.notificationsAllowed ||
+                (uiState.isProtectionEnabled && !uiState.alwaysOnActive)
+            ) {
                 SettingsCard(title = stringResource(R.string.settings_section_health)) {
+                    // First: without notifications the parent never hears that
+                    // protection stopped (#64).
+                    if (!uiState.notificationsAllowed) {
+                        SettingActionRow(
+                            title = stringResource(R.string.alerts_hint_title),
+                            description = stringResource(R.string.alerts_hint_desc),
+                            actionLabel = stringResource(R.string.alerts_allow),
+                            onAction = onAllowNotifications
+                        )
+                    }
                     if (!uiState.batteryExempt) {
                         SettingActionRow(
                             title = stringResource(R.string.battery_hint_title),
@@ -473,6 +487,7 @@ private fun ParentSettingsPreview() {
             onTimelineClick = {},
             onBatteryAllow = {},
             onOpenVpnSettings = {},
+            onAllowNotifications = {},
             onOpenUrl = {}
         )
     }
