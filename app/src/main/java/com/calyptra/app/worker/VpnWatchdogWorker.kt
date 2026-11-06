@@ -30,7 +30,8 @@ object VpnWatchdogPolicy {
         protectionEnabled: Boolean,
         vpnRunning: Boolean,
         permissionHeld: Boolean,
-        yieldedToOtherVpn: Boolean = false
+        yieldedToOtherVpn: Boolean = false,
+        otherVpnActive: Boolean = false
     ): WatchdogAction =
         when {
             !protectionEnabled -> WatchdogAction.NONE
@@ -39,6 +40,9 @@ object VpnWatchdogPolicy {
             // the other VPN. The parent was already alerted; they re-enable us
             // explicitly when they want protection back (CFT-L1).
             yieldedToOtherVpn -> WatchdogAction.NONE
+            // Another VPN holds the slot even without a recorded yield (e.g.
+            // onRevoke never ran): restarting would kill it (#80).
+            otherVpnActive -> WatchdogAction.NONE
             vpnRunning -> WatchdogAction.NONE
             permissionHeld -> WatchdogAction.RESTART_VPN
             else -> WatchdogAction.ALERT_PERMISSION_LOST
@@ -54,13 +58,22 @@ class VpnWatchdogWorker(
 
     override suspend fun doWork(): Result {
         val app = applicationContext as CalyptraApp
+        val enabled = app.preferencesRepository.protectionEnabled.first()
+        val running = VpnController.isRunning.value
+        // Persisted so the yield survives process death (in-memory state
+        // would reset to Stopped and we'd restart, killing the other VPN).
+        val yielded = app.preferencesRepository.yieldedToOtherVpn.first()
+        val otherVpn = app.networkMonitor.isOtherVpnActive()
+        // VpnService.prepare() switches the active VPN to us when we hold
+        // consent, disconnecting any other VPN (#80). Only call it when a
+        // restart is actually on the table.
+        val mayRestart = enabled && !running && !yielded && !otherVpn
         val action = VpnWatchdogPolicy.decide(
-            protectionEnabled = app.preferencesRepository.protectionEnabled.first(),
-            vpnRunning = VpnController.isRunning.value,
-            permissionHeld = VpnService.prepare(applicationContext) == null,
-            // Persisted so the yield survives process death (in-memory state
-            // would reset to Stopped and we'd restart, killing the other VPN).
-            yieldedToOtherVpn = app.preferencesRepository.yieldedToOtherVpn.first()
+            protectionEnabled = enabled,
+            vpnRunning = running,
+            permissionHeld = mayRestart && VpnService.prepare(applicationContext) == null,
+            yieldedToOtherVpn = yielded,
+            otherVpnActive = otherVpn
         )
         val events = app.protectionEventRepository
         when (action) {

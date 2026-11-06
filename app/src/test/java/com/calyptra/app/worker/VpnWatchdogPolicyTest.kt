@@ -61,4 +61,17 @@ class VpnWatchdogPolicyTest {
             )
         }
     }
+
+    @Test
+    fun `never restarts or alerts while another VPN holds the slot`() {
+        for (held in listOf(true, false)) {
+            assertEquals(
+                WatchdogAction.NONE,
+                VpnWatchdogPolicy.decide(
+                    protectionEnabled = true, vpnRunning = false, permissionHeld = held,
+                    yieldedToOtherVpn = false, otherVpnActive = true
+                )
+            )
+        }
+    }
 }

@@ -3,7 +3,9 @@ package com.calyptra.app.vpn
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
+import android.net.NetworkCapabilities
 import android.os.Build
+import android.os.Process
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,6 +29,20 @@ class NetworkEnvironmentMonitor(context: Context) {
      *  mode falls back to plain DNS under our VPN and is not a bypass. */
     fun refresh() {
         _privateDnsActive.value = isPrivateDnsStrict()
+    }
+
+    /** True when another app's VPN is up. Side-effect free, unlike
+     *  VpnService.prepare(), which for an already-consented app SWITCHES the
+     *  active VPN to us and disconnects the other one (#80). On API 29+ our
+     *  own tunnel is excluded by owner uid; below that, callers only ask
+     *  while ours is stopped. */
+    fun isOtherVpnActive(): Boolean {
+        @Suppress("DEPRECATION") // allNetworks: no non-callback replacement for a one-shot read
+        return connectivityManager.allNetworks.any { network ->
+            val caps = connectivityManager.getNetworkCapabilities(network) ?: return@any false
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) &&
+                (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || caps.ownerUid != Process.myUid())
+        }
     }
 
     private fun isPrivateDnsStrict(): Boolean {

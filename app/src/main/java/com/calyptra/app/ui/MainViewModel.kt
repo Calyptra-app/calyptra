@@ -60,16 +60,17 @@ class MainViewModel(
     private val protectionEventRepository: ProtectionEventRepository
 ) : ViewModel() {
 
-    /** True when VpnService.prepare() returned non-null on last resume —
-     *  i.e. we don't hold the system VPN permission (CFT-L3). */
+    /** True when another app's VPN was active on last resume (CFT-L3).
+     *  Never derived from VpnService.prepare(): that call takes the VPN away
+     *  from the other app (#80). */
     private val vpnPermissionHeldByOther = MutableStateFlow(false)
 
     /** Live battery-exemption status, refreshed on resume (PWR-L3). */
     private val batteryExempt = MutableStateFlow(true)
 
-    /** Called from the UI on every ON_RESUME with a fresh prepare() check. */
-    fun onResumed(prepareNeeded: Boolean) {
-        vpnPermissionHeldByOther.value = prepareNeeded
+    /** Called from the UI on every ON_RESUME to refresh conflict inputs. */
+    fun onResumed() {
+        vpnPermissionHeldByOther.value = networkMonitor.isOtherVpnActive()
         batteryExempt.value = powerStatusProvider.isIgnoringBatteryOptimizations()
         networkMonitor.refresh()
     }

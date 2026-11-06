@@ -2,7 +2,6 @@ package com.calyptra.app.ui.settings
 
 import android.content.Intent
 import android.net.Uri
-import android.net.VpnService
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -84,7 +83,7 @@ fun ParentSettingsScreen(
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                viewModel.onResumed(prepareNeeded = VpnService.prepare(context) != null)
+                viewModel.onResumed()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
