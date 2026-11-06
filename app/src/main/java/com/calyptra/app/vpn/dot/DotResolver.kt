@@ -62,7 +62,8 @@ internal class DotResolver(
 
     /** A connect/handshake in flight; [socket] is closed by [close] to abort it. */
     private class PendingOpen {
-        var socket: Closeable? = null
+        // Read by the deadline timer thread.
+        @Volatile var socket: Closeable? = null
     }
 
     private val lock = Any()
@@ -71,6 +72,7 @@ internal class DotResolver(
     private val pending = HashSet<PendingOpen>()
     private val backoff = DotBackoff(endpoints.size)
     private val slots = DotSlots(maxActiveConnections)
+    private val deadlineTimer = DotDeadlineTimer()
     @Volatile private var closed = false
 
     /**
@@ -110,6 +112,7 @@ internal class DotResolver(
             all
         }
         slots.close()
+        deadlineTimer.shutdown()
         toClose.forEach { closeQuietly(it) }
     }
 
@@ -166,10 +169,23 @@ internal class DotResolver(
                 return null
             }
             conn.conn.setReadTimeout(timeout)
-            conn.conn.output.write(framed)
-            conn.conn.output.flush()
-            val response = DotFraming.readMessage(conn.conn.input)
-            if (response != null && DnsResponseValidator.matches(dnsData, response)) {
+            // Backstop for the write, which no socket timeout bounds.
+            val guard = deadlineTimer.guard(budget) { conn.conn }
+            val response = try {
+                conn.conn.output.write(framed)
+                conn.conn.output.flush()
+                // Each read of the (possibly fragmented) frame gets only what is
+                // left of the query deadline, not a fresh full window.
+                DotFraming.readMessage(
+                    DeadlineInputStream(conn.conn.input, budget, TlsDotConnector.READ_TIMEOUT_MS, conn.conn::setReadTimeout)
+                )
+            } finally {
+                guard.cancel()
+            }
+            if (guard.fired) {
+                discard(conn) // closed by the backstop: never return it to the pool
+                null
+            } else if (response != null && DnsResponseValidator.matches(dnsData, response)) {
                 recycle(conn)
                 response
             } else {
@@ -239,12 +255,20 @@ internal class DotResolver(
                 }
             }
         }
+        // The handshake is many reads/writes under one socket timeout; close the
+        // in-progress socket at the query deadline so it can't overrun it.
+        val guard = deadlineTimer.guard(budget) { attempt.socket }
         val conn = try {
             connector.open(endpoints[index], budget, register)
         } catch (e: Exception) {
             null
         } finally {
+            guard.cancel()
             synchronized(lock) { pending.remove(attempt) }
+        }
+        if (conn != null && guard.fired) {
+            closeQuietly(conn) // its socket was closed by the backstop
+            return null
         }
         if (conn == null) return null
         val pooled = PooledConn(endpointIndex = index, conn = conn, idleSinceMs = nowMs())

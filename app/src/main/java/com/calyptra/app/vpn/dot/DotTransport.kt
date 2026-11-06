@@ -53,6 +53,13 @@ internal class DotBudget(private val nowMs: () -> Long, private val deadlineMs: 
 
     fun expired(): Boolean = nowMs() >= deadlineMs
 
+    fun remainingMs(): Long = deadlineMs - nowMs()
+
+    /** The wall-clock backstop cut a step short (see DotDeadlineTimer). */
+    fun markTruncated() {
+        truncated = true
+    }
+
     /**
      * The timeout to use for a step whose own limit is [capMs], or 0 when the
      * deadline has passed. Callers must treat 0 as "give up", never pass it to a

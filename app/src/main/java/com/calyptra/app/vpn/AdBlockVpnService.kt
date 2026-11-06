@@ -432,16 +432,10 @@ class AdBlockVpnService : VpnService() {
         val outputStream = FileOutputStream(vpnInterface.fileDescriptor)
         val buffer = ByteBuffer.allocate(32767)
         val reader = TunReader(vpnInterface.fileDescriptor)
-        // Cancellation can't interrupt the reader's blocking poll(). This
-        // watcher is cancelled with the loop (reconfigure/stop cancel packetJob
-        // before closing the fd) and wakes the reader from its finally.
-        val waker = launch {
-            try {
-                awaitCancellation()
-            } finally {
-                reader.wake()
-            }
-        }
+        // Cancellation can't interrupt the reader's blocking poll(); this hook
+        // wakes it when the loop is cancelled (reconfigure/stop cancel packetJob
+        // before closing the fd). Registered before the first blocking read.
+        val waker = onCancellation { reader.wake() }
         try {
             readLoop(reader, buffer, outputStream)
         } finally {
