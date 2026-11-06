@@ -44,6 +44,8 @@ class AdBlockVpnService : VpnService() {
     /** Set once packet-loop retries are exhausted; this instance then refuses
      *  automatic starts until it is destroyed. */
     @Volatile private var gaveUp = false
+    /** Most recent onStartCommand startId, for stopSelfResult on give-up. */
+    private var lastStartId = 0
     /** Bumped per startVpn() under tunnelLock. Identifies the live generation:
      *  only it may install a tunnel or clear the starting flag. */
     @Volatile private var startGeneration = 0
@@ -111,32 +113,36 @@ class AdBlockVpnService : VpnService() {
         startForeground(NOTIFICATION_ID, createNotification())
 
         val userInitiated = intent?.getBooleanExtra(EXTRA_USER_INITIATED, false) == true
-        if (userInitiated) packetLoopGaveUpUntil = 0L
-        // After the packet loop exhausted its retries we alerted the parent and
-        // stopped. Automatic starts (watchdog, sticky restart, a check queued
-        // before the give-up) wait out the cooldown; an explicit user start
-        // always goes through.
-        if (gaveUp || System.currentTimeMillis() < packetLoopGaveUpUntil) {
-            Log.w(TAG, "Automatic start suppressed: packet-loop give-up cooldown")
-            synchronized(tunnelLock) {
-                if (vpnInterface != null || job?.isActive == true) return START_STICKY
+        // One locked decision, shared with packet-loop recovery/give-up, so no
+        // start can interleave with them (no competing generations, and no
+        // start launched just before a give-up's stop).
+        val accepted = synchronized(tunnelLock) {
+            lastStartId = startId
+            if (userInitiated) {
+                // An explicit tap always restores protection, even after give-up.
+                gaveUp = false
+                packetLoopGaveUpUntil = 0L
             }
+            when {
+                // A start already in flight (blocklist load, SafeSearch
+                // resolution, establish) reports not-running until installed,
+                // so the watchdog may ask again meanwhile. Don't restart it.
+                vpnInterface != null || job?.isActive == true -> true
+                // Packet-loop retries exhausted: automatic starts (watchdog,
+                // sticky restart, queued checks) wait out the cooldown.
+                gaveUp || System.currentTimeMillis() < packetLoopGaveUpUntil -> false
+                else -> {
+                    startVpn()
+                    true
+                }
+            }
+        }
+        if (!accepted) {
+            Log.w(TAG, "Automatic start suppressed: packet-loop give-up cooldown")
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             return START_NOT_STICKY
         }
-
-        // A start already in flight (blocklist load, SafeSearch resolution,
-        // establish) reports not-running until the tunnel is installed, so the
-        // watchdog may ask again meanwhile. Don't cancel and restart it.
-        // Under tunnelLock so it can't interleave with packet-loop recovery,
-        // which also decides whether to start (no competing generations).
-        synchronized(tunnelLock) {
-            if (vpnInterface == null && job?.isActive != true) {
-                startVpn()
-            }
-        }
-
         return START_STICKY
     }
 
@@ -212,11 +218,13 @@ class AdBlockVpnService : VpnService() {
                 }
 
                 val build = buildTunnel(app)
-                val tun = build.tunnel
-                when {
-                    tun == null -> handleStartFailure(null)
-                    // installTunnel publishes Running inside its critical section.
-                    installTunnel(tun, generation) -> {
+                when (establishAndInstall(build.builder, generation)) {
+                    InstallResult.EstablishFailed -> handleStartFailure(null)
+                    // Superseded or stopping: a newer generation or the
+                    // teardown owns the tunnel now; nothing more to do.
+                    InstallResult.Superseded -> Unit
+                    // Running was published inside the critical section.
+                    InstallResult.Installed -> {
                         restartGuard.reset()
                         // The whitelist was snapshotted before Running was
                         // published; a toggle in that window sent no RECONFIGURE
@@ -232,8 +240,6 @@ class AdBlockVpnService : VpnService() {
                             VpnWatchdogScheduler.checkNow(applicationContext)
                         }
                     }
-                    // installTunnel == false: service is tearing down; it already
-                    // closed the new interface — nothing more to do.
                 }
             } catch (e: CancellationException) {
                 // Superseded by a newer start or a stop: not a startup failure.
@@ -251,18 +257,18 @@ class AdBlockVpnService : VpnService() {
         }
     }
 
-    /** Atomically swaps in [tun] as the live interface and starts its packet
-     *  loop, cancelling and closing any previous one. Returns false (and closes
-     *  [tun]) if the service is tearing down, so a late establish can't reinstall
-     *  protection after stop. Safe for both the initial start (no previous) and
-     *  reconfigure. */
-    private fun installTunnel(tun: ParcelFileDescriptor, generation: Int): Boolean = synchronized(tunnelLock) {
-        // A superseded generation (a newer start replaced it after its
-        // establish()) must not swap its stale descriptor over the live one.
-        if (stopping || generation != startGeneration) {
-            tun.close()
-            return false
-        }
+    private enum class InstallResult { Installed, Superseded, EstablishFailed }
+
+    /** establish()es [builder] and swaps the result in as the live interface,
+     *  starting its packet loop and cancelling/closing any previous one, all in
+     *  one tunnelLock section. establish() itself replaces the system's active
+     *  VPN interface, so the generation/stopping check must come BEFORE it:
+     *  a superseded start or reconfigure (or one racing a stop) never calls
+     *  establish() at all. startVpn() bumps the generation under the same lock.
+     *  Safe for both the initial start (no previous) and reconfigure. */
+    private fun establishAndInstall(builder: Builder, generation: Int): InstallResult = synchronized(tunnelLock) {
+        if (stopping || generation != startGeneration) return InstallResult.Superseded
+        val tun = builder.establish() ?: return InstallResult.EstablishFailed
         val oldInterface = vpnInterface
         val oldLoop = packetJob
         // Bring the new tunnel up before tearing the old one down (no gap).
@@ -275,7 +281,7 @@ class AdBlockVpnService : VpnService() {
         // unblocked by the close rather than deadlocking a join (PWR-L1).
         oldLoop?.cancel()
         oldInterface?.close()
-        true
+        InstallResult.Installed
     }
 
     /** Builds the tun interface from the current config. Two sets of apps are
@@ -285,7 +291,7 @@ class AdBlockVpnService : VpnService() {
      *   - parent-whitelisted apps (WL-L1).
      *  These rules bake in at establish() time, so changing the whitelist needs
      *  a fresh interface — see reconfigure(). */
-    private class TunnelBuild(val tunnel: ParcelFileDescriptor?, val whitelist: Set<String>)
+    private class TunnelBuild(val builder: Builder, val whitelist: Set<String>)
 
     private suspend fun buildTunnel(app: CalyptraApp): TunnelBuild {
         val builder = Builder()
@@ -312,7 +318,8 @@ class AdBlockVpnService : VpnService() {
             }
         }
 
-        return TunnelBuild(builder.establish(), whitelistedPackages.toSet())
+        // Not established here: establishAndInstall does that under the lock.
+        return TunnelBuild(builder, whitelistedPackages.toSet())
     }
 
     private fun startPacketLoop(tun: ParcelFileDescriptor) {
@@ -357,13 +364,15 @@ class AdBlockVpnService : VpnService() {
             // The periodic watchdog (15 min) is the cooldown before a new try.
             Log.e(TAG, "Packet loop keeps failing; giving up and alerting")
             alertRestoreFailed()
-            stopSelf()
+            // Only if no start was delivered since: a user start racing this
+            // give-up must survive it (onStartCommand records lastStartId).
+            stopSelfResult(synchronized(tunnelLock) { lastStartId })
         }
     }
 
     /** Rebuilds the live tunnel in place after a per-app routing change, without
      *  tearing the service down (no protection gap, no notification churn).
-     *  Serialized via reconfigureMutex; the swap itself is done by installTunnel. */
+     *  Serialized via reconfigureMutex; the swap itself is done by establishAndInstall. */
     private fun reconfigure() {
         val generation = synchronized(tunnelLock) { startGeneration }
         reconfigureJob = scope?.launch {
@@ -374,8 +383,8 @@ class AdBlockVpnService : VpnService() {
                 if (vpnInterface == null || stopping) return@withLock
                 try {
                     val app = applicationContext as CalyptraApp
-                    val newTun = buildTunnel(app).tunnel ?: return@withLock
-                    if (installTunnel(newTun, generation)) {
+                    val result = establishAndInstall(buildTunnel(app).builder, generation)
+                    if (result == InstallResult.Installed) {
                         Log.i(TAG, "Tunnel reconfigured (per-app routing updated)")
                     }
                 } catch (e: Exception) {
@@ -613,7 +622,7 @@ class AdBlockVpnService : VpnService() {
         // survives stopVpn()'s updateState(false), then alert the parent.
         synchronized(tunnelLock) {
             // Set stopping with Revoked so an install racing this can't publish
-            // Running over it (installTunnel checks stopping under the lock).
+            // Running over it (establishAndInstall checks stopping under the lock).
             stopping = true
             VpnController.notifyRevoked()
         }
@@ -652,7 +661,7 @@ class AdBlockVpnService : VpnService() {
 
     private fun stopVpn() {
         synchronized(tunnelLock) {
-            // Set first so an in-flight reconfigure (installTunnel) bails out and
+            // Set first so an in-flight reconfigure (establishAndInstall) bails out and
             // can't reinstall a tunnel after we've torn down.
             stopping = true
             VpnController.updateState(false)
