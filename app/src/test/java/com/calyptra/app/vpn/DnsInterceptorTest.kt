@@ -1,6 +1,8 @@
 package com.calyptra.app.vpn
 
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -573,6 +575,88 @@ class DnsInterceptorTest {
         assertEquals("ANCOUNT must be 0", 0x00.toByte(), responseBytes[6])
         assertEquals(0x00.toByte(), responseBytes[7])
         assertTrue("Matcher must not be consulted with an unparseable name", seen.isEmpty())
+    }
+
+    // --- Stats counting by verdict (#67) ---
+
+    private fun interceptorReturning(verdict: Verdict) = DnsInterceptor { _, _ -> verdict }
+
+    private fun ByteBuffer.bytes(): ByteArray = ByteArray(remaining()).also { duplicate().get(it) }
+
+    @Test
+    fun `BlockZeroIp counts as blocked`() {
+        val result = interceptorReturning(Verdict.BlockZeroIp)
+            .intercept(ByteBuffer.wrap(createDnsQuery("ads.example")))
+        assertNotNull(result.response)
+        assertTrue(result.countsAsBlocked)
+    }
+
+    @Test
+    fun `BlockNxdomain counts as blocked`() {
+        val result = interceptorReturning(Verdict.BlockNxdomain)
+            .intercept(ByteBuffer.wrap(createDnsQuery("bad.example")))
+        assertNotNull(result.response)
+        assertTrue(result.countsAsBlocked)
+    }
+
+    @Test
+    fun `DoH canary counts as blocked`() {
+        val result = interceptorReturning(Verdict.Allow)
+            .intercept(ByteBuffer.wrap(createDnsQuery("use-application-dns.net")))
+        assertNotNull(result.response)
+        assertTrue(result.countsAsBlocked)
+    }
+
+    @Test
+    fun `SafeSearch redirect is answered but not counted`() {
+        val result = interceptorReturning(Verdict.Redirect(byteArrayOf(216.toByte(), 239.toByte(), 38, 120)))
+            .intercept(ByteBuffer.wrap(createDnsQuery("google.com")))
+        assertNotNull(result.response)
+        assertFalse(result.countsAsBlocked)
+    }
+
+    @Test
+    fun `SafeSearch AAAA NODATA is answered but not counted`() {
+        val interceptor = makeInterceptor(
+            getRedirectIp = { d, t -> if (d == "google.com" && t == 28) byteArrayOf() else null }
+        )
+        val result = interceptor.intercept(ByteBuffer.wrap(createDnsQuery("google.com", queryType = 28)))
+        assertNotNull(result.response)
+        assertFalse(result.countsAsBlocked)
+    }
+
+    @Test
+    fun `allowed query is forwarded and not counted`() {
+        val result = interceptorReturning(Verdict.Allow)
+            .intercept(ByteBuffer.wrap(createDnsQuery("example.com")))
+        assertNull(result.response)
+        assertFalse(result.countsAsBlocked)
+    }
+
+    @Test
+    fun `malformed compression-pointer QNAME fails closed but is not counted`() {
+        val query = byteArrayOf(
+            0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0,
+            0x01, 'a'.code.toByte(), 0xC0.toByte(), 0x0C, 0x00, 0x01, 0x00, 0x01
+        )
+        val result = interceptorReturning(Verdict.BlockNxdomain).intercept(ByteBuffer.wrap(query))
+        assertNotNull(result.response)
+        assertFalse(result.countsAsBlocked)
+    }
+
+    @Test
+    fun `intercept and processDnsPacket produce identical bytes`() {
+        val verdicts = listOf(
+            Verdict.BlockZeroIp, Verdict.BlockNxdomain, Verdict.Nodata,
+            Verdict.Redirect(byteArrayOf(1, 2, 3, 4))
+        )
+        for (verdict in verdicts) {
+            val interceptor = interceptorReturning(verdict)
+            val query = createDnsQuery("x.example")
+            val viaIntercept = interceptor.intercept(ByteBuffer.wrap(query)).response!!.bytes()
+            val viaLegacy = interceptor.processDnsPacket(ByteBuffer.wrap(query))!!.bytes()
+            assertArrayEquals("bytes differ for $verdict", viaLegacy, viaIntercept)
+        }
     }
 
     private fun createDnsQuery(domain: String, queryType: Int = 1): ByteArray {

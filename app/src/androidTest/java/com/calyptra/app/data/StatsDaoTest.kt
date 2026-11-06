@@ -58,6 +58,15 @@ class StatsDaoTest {
     }
     
     @Test
+    fun incrementCountAddsBatchSize() = runBlocking {
+        val today = LocalDate.now()
+        dao.incrementCount(today, 5)
+        dao.incrementCount(today, 7)
+
+        assertEquals(12, dao.getBlockedCountForDate(today).first())
+    }
+
+    @Test
     fun incrementCountCreatesNew() = runBlocking {
         val today = LocalDate.now()
         // No insert

@@ -59,7 +59,8 @@ class VpnWatchdogWorker(
     override suspend fun doWork(): Result {
         val app = applicationContext as CalyptraApp
         val enabled = app.preferencesRepository.protectionEnabled.first()
-        val running = VpnController.isRunning.value
+        // A start in progress is not an outage: don't restart it or log a gap.
+        val running = VpnController.isRunning.value || VpnController.isStarting.value
         // Persisted so the yield survives process death (in-memory state
         // would reset to Stopped and we'd restart, killing the other VPN).
         val yielded = app.preferencesRepository.yieldedToOtherVpn.first()

@@ -33,6 +33,10 @@ import com.calyptra.app.R
 @Composable
 fun WhitelistScreen(
     onBack: () -> Unit,
+    /** PIN gate (MainViewModel.requirePin). Proceeds silently in a grace
+     *  session; challenges otherwise (expired, backgrounded, or reached by any
+     *  route other than the settings door). */
+    requirePin: (GatedAction, () -> Unit) -> Unit,
     viewModel: WhitelistViewModel = viewModel()
 ) {
     val apps by viewModel.apps.collectAsStateWithLifecycle()
@@ -66,7 +70,14 @@ fun WhitelistScreen(
                 items(apps, key = { it.packageName }) { app ->
                     AppListItem(
                         app = app,
-                        onToggle = { viewModel.toggleWhitelist(app) }
+                        onToggle = {
+                            if (app.isWhitelisted) {
+                                // Removing an exemption restores filtering: no PIN.
+                                viewModel.toggleWhitelist(app)
+                            } else {
+                                requirePin(GatedAction.WHITELIST) { viewModel.toggleWhitelist(app) }
+                            }
+                        }
                     )
                 }
             }

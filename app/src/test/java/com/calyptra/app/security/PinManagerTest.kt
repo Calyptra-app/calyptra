@@ -118,6 +118,25 @@ class PinManagerTest {
     }
 
     @Test
+    fun `verification that completes after the session ended grants no grace`() = runBlocking {
+        lateinit var manager: PinManager
+        var backgroundMidCheck = false
+        manager = PinManager(FakePinStore(), clock, hasher = { pin, salt ->
+            // Simulates onStop() landing while the KDF runs.
+            if (backgroundMidCheck) manager.endGraceSession()
+            PinHasher.hash(pin, salt)
+        })
+        manager.setPin("1234")
+        backgroundMidCheck = true
+        assertEquals(VerifyResult.Ok, manager.verify("1234"))
+        assertFalse("late success must not reopen grace", manager.isInGraceSession())
+
+        backgroundMidCheck = false
+        manager.verify("1234")
+        assertTrue("a fresh verification still grants grace", manager.isInGraceSession())
+    }
+
+    @Test
     fun `endGraceSession ends it immediately`() = runBlocking {
         val manager = PinManager(FakePinStore(), clock)
         manager.setPin("1234")

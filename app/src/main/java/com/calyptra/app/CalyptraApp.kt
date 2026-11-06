@@ -12,6 +12,8 @@ import com.calyptra.app.data.StatsRepository
 import com.calyptra.app.blocklist.BlocklistManager
 import com.calyptra.app.safesearch.SafeSearchManager
 import com.calyptra.app.security.PinManager
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 
 class CalyptraApp : Application() {
@@ -33,8 +35,9 @@ class CalyptraApp : Application() {
         kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default
     )
 
-    /** App-lifetime IO scope for fire-and-forget event logging (TML-L2, FR-13.2). */
-    private val ioScope = kotlinx.coroutines.CoroutineScope(
+    /** App-lifetime IO scope for fire-and-forget event logging (TML-L2, FR-13.2)
+     *  and for writes that must outlive the screen that started them. */
+    val ioScope = kotlinx.coroutines.CoroutineScope(
         kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO
     )
 
@@ -43,6 +46,20 @@ class CalyptraApp : Application() {
         createNotificationChannel()
         setupWorker()
         setupWatchdogLockstep()
+        setupStatsFlushing()
+    }
+
+    /** Persists batched block counts every [StatsRepository.FLUSH_INTERVAL] and
+     *  again whenever the VPN stops, so a clean stop loses nothing. See
+     *  [StatsRepository] for the loss window on process death. */
+    private fun setupStatsFlushing() {
+        statsRepository.startPeriodicFlush(ioScope)
+        ioScope.launch {
+            com.calyptra.app.vpn.VpnController.isRunning
+                .drop(1)
+                .filter { running -> !running }
+                .collect { statsRepository.flush() }
+        }
     }
 
     /** Fire-and-forget persistence of the "yielded to another VPN" flag (CFT-L1)

@@ -34,6 +34,12 @@ class PinManager(
     @Volatile
     private var graceUntil = 0L
 
+    /** Bumped by endGraceSession(). A verification that started before the
+     *  session ended (e.g. the app was backgrounded mid-check) must not grant
+     *  a fresh grace session when it completes. */
+    private var sessionEpoch = 0
+    private val graceLock = Any()
+
     suspend fun isPinSet(): Boolean = store.getPinHash().isNotEmpty()
 
     suspend fun setPin(pin: String) {
@@ -44,6 +50,7 @@ class PinManager(
     }
 
     suspend fun verify(pin: String): VerifyResult {
+        val epoch = synchronized(graceLock) { sessionEpoch }
         val lockedUntil = store.getLockoutUntil()
         if (clock() < lockedUntil) {
             // Locked out: never evaluates the hash, so brute-forcing burns no CPU
@@ -65,7 +72,9 @@ class PinManager(
 
         return if (ok) {
             store.setFailureState(0, 0L)
-            graceUntil = clock() + GRACE_SESSION_MS
+            synchronized(graceLock) {
+                if (epoch == sessionEpoch) graceUntil = clock() + GRACE_SESSION_MS
+            }
             VerifyResult.Ok
         } else {
             val attempts = store.getFailedAttempts() + 1
@@ -82,7 +91,10 @@ class PinManager(
     fun isInGraceSession(): Boolean = clock() < graceUntil
 
     fun endGraceSession() {
-        graceUntil = 0L
+        synchronized(graceLock) {
+            graceUntil = 0L
+            sessionEpoch++
+        }
     }
 
     private fun encode(bytes: ByteArray): String = Base64.getEncoder().encodeToString(bytes)

@@ -2,6 +2,22 @@ package com.calyptra.app.vpn
 
 import java.nio.ByteBuffer
 
+/**
+ * Outcome of intercepting one DNS query.
+ *
+ * @property response the locally generated answer, or null to forward upstream.
+ * @property countsAsBlocked true only for a real blocking decision: ad/tracker
+ *   sinkhole, threat/category NXDOMAIN, or the DoH canary. SafeSearch redirects
+ *   and the NODATA answers that go with them are rewrites, not blocks (#67).
+ */
+class DnsInterceptResult(val response: ByteBuffer?, val countsAsBlocked: Boolean) {
+    companion object {
+        val FORWARD = DnsInterceptResult(null, countsAsBlocked = false)
+        fun blocked(response: ByteBuffer) = DnsInterceptResult(response, countsAsBlocked = true)
+        fun rewritten(response: ByteBuffer) = DnsInterceptResult(response, countsAsBlocked = false)
+    }
+}
+
 class DnsInterceptor(
     private val resolveVerdict: (domain: String, queryType: Int) -> Verdict
 ) {
@@ -19,11 +35,15 @@ class DnsInterceptor(
         )
     }
 
-    fun processDnsPacket(packet: ByteBuffer): ByteBuffer? {
-        // Simple DNS parsing logic
-        // Return null if allowed (to be forwarded)
-        // Return ByteBuffer with response if blocked
-        
+    /** Response bytes only. See [intercept] for whether the answer is a block. */
+    fun processDnsPacket(packet: ByteBuffer): ByteBuffer? = intercept(packet).response
+
+    /**
+     * Parses the query and decides what to do with it. A null
+     * [DnsInterceptResult.response] means forward upstream; otherwise it is the
+     * locally generated answer.
+     */
+    fun intercept(packet: ByteBuffer): DnsInterceptResult {
         try {
             val position = packet.position()
             val limit = packet.limit()
@@ -31,14 +51,14 @@ class DnsInterceptor(
             packet.get(data)
             packet.position(position) // Reset for forwarding if needed
 
-            if (data.size < 12) return null // Too short
+            if (data.size < 12) return DnsInterceptResult.FORWARD // Too short
 
             // Parse Header
             // ID: bytes 0-1
             // Flags: bytes 2-3
             val qdCount = ((data[4].toInt() and 0xFF) shl 8) or (data[5].toInt() and 0xFF)
             
-            if (qdCount == 0) return null
+            if (qdCount == 0) return DnsInterceptResult.FORWARD
 
             // Parse Question Section (starts at byte 12)
             var offset = 12
@@ -57,10 +77,15 @@ class DnsInterceptor(
                     // the blocklist/threat filter — which previously returned null
                     // (forward/allow). Fail CLOSED instead: answer NXDOMAIN,
                     // echoing the client's own bytes since we can't parse the name.
-                    return constructNxdomainResponse(request = data, questionEnd = data.size)
+                    // Not counted as a block: this is parser hardening against a
+                    // malformed packet, not a decision about a site the child
+                    // tried to reach, and junk traffic shouldn't inflate stats.
+                    return DnsInterceptResult.rewritten(
+                        constructNxdomainResponse(request = data, questionEnd = data.size)
+                    )
                 }
                 offset++
-                if (offset + length > data.size) return null
+                if (offset + length > data.size) return DnsInterceptResult.FORWARD
 
                 for (i in 0 until length) {
                     domainBuilder.append(data[offset + i].toChar())
@@ -71,7 +96,7 @@ class DnsInterceptor(
                 // Cap the assembled name at the DNS maximum (253 bytes). A crafted
                 // multi-KB QNAME must never reach the matcher; bail to the
                 // fall-through (null == forward/allow) instead.
-                if (domainBuilder.length > 253) return null
+                if (domainBuilder.length > 253) return DnsInterceptResult.FORWARD
             }
             
             if (domainBuilder.isNotEmpty()) {
@@ -81,7 +106,7 @@ class DnsInterceptor(
             val domain = domainBuilder.toString()
 
             // Type and Class (4 bytes)
-            if (offset + 4 > data.size) return null
+            if (offset + 4 > data.size) return DnsInterceptResult.FORWARD
 
             // Parse query type (A=1, AAAA=28).
             val queryType = ((data[offset].toInt() and 0xFF) shl 8) or (data[offset + 1].toInt() and 0xFF)
@@ -89,20 +114,32 @@ class DnsInterceptor(
             // Block DoH canary and known DoH provider domains to prevent browsers bypassing DNS blocking.
             // Checked before any policy verdict — this must not be overridable.
             if (DOH_CANARY_DOMAINS.contains(domain.lowercase())) {
-                return constructNxdomainResponse(request = data, questionEnd = offset + 4)
+                return DnsInterceptResult.blocked(
+                    constructNxdomainResponse(request = data, questionEnd = offset + 4)
+                )
             }
 
+            val questionEnd = offset + 4
             return when (val verdict = resolveVerdict(domain, queryType)) {
-                Verdict.Allow -> null // Forward upstream
-                Verdict.BlockZeroIp -> constructBlockedResponse(request = data, questionEnd = offset + 4)
-                Verdict.BlockNxdomain -> constructNxdomainResponse(request = data, questionEnd = offset + 4)
-                Verdict.Nodata -> constructNodataResponse(request = data, questionEnd = offset + 4)
-                is Verdict.Redirect -> constructRedirectResponse(request = data, questionEnd = offset + 4, ip = verdict.ip)
+                Verdict.Allow -> DnsInterceptResult.FORWARD
+                Verdict.BlockZeroIp -> DnsInterceptResult.blocked(
+                    constructBlockedResponse(request = data, questionEnd = questionEnd)
+                )
+                Verdict.BlockNxdomain -> DnsInterceptResult.blocked(
+                    constructNxdomainResponse(request = data, questionEnd = questionEnd)
+                )
+                // DnsPolicy only emits Nodata for SafeSearch (AAAA on a redirected
+                // domain, forcing the IPv4 redirect), so it is a rewrite, not a block.
+                Verdict.Nodata -> DnsInterceptResult.rewritten(
+                    constructNodataResponse(request = data, questionEnd = questionEnd)
+                )
+                is Verdict.Redirect -> DnsInterceptResult.rewritten(
+                    constructRedirectResponse(request = data, questionEnd = questionEnd, ip = verdict.ip)
+                )
             }
-            
         } catch (e: Exception) {
             e.printStackTrace()
-            return null
+            return DnsInterceptResult.FORWARD
         }
     }
 

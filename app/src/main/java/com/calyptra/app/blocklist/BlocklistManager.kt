@@ -85,34 +85,19 @@ class BlocklistManager(private val context: Context) {
     }
     
     suspend fun loadCachedUpdates(): Set<String> = withContext(Dispatchers.IO) {
-        val file = File(context.filesDir, "updated_blocklist.txt")
-        if (file.exists()) {
-            file.useLines { lines ->
-                lines.filter { it.isNotBlank() && !it.startsWith("#") }
-                    .map { it.trim().lowercase() }
-                    .take(MAX_REMOTE_DOMAINS)
-                    .toSet()
-            }
-        } else {
-            emptySet()
-        }
+        BlocklistCacheStore.read(File(context.filesDir, "updated_blocklist.txt"), MAX_REMOTE_DOMAINS)
     }
-    
+
     /** Persists a downloaded ad/tracker update, replacing the cached list.
      *  Returns false (leaving the previous cache untouched) when the update is
-     *  implausibly small per [BlocklistUpdatePolicy] — a truncated/hijacked feed
-     *  must never silently shrink protection. */
+     *  implausibly small per [BlocklistUpdatePolicy] or exceeds
+     *  [MAX_REMOTE_DOMAINS]: a truncated/hijacked feed must never silently
+     *  shrink protection, and an oversized one is rejected, not truncated. */
     suspend fun saveUpdate(newDomains: Set<String>): Boolean = withContext(Dispatchers.IO) {
         val file = File(context.filesDir, "updated_blocklist.txt")
-        if (!BlocklistUpdatePolicy.isPlausibleUpdate(newDomains.size, loadCachedUpdates().size)) {
+        if (!BlocklistCacheStore.replaceIfAcceptable(file, newDomains, MAX_REMOTE_DOMAINS)) {
             return@withContext false
         }
-        val capped = if (newDomains.size > MAX_REMOTE_DOMAINS) {
-            newDomains.take(MAX_REMOTE_DOMAINS).toSet()
-        } else {
-            newDomains
-        }
-        writeAtomically(file, capped)
         initialize() // Reload
         true
     }
@@ -128,56 +113,19 @@ class BlocklistManager(private val context: Context) {
     }
 
     suspend fun loadCachedThreatUpdates(): Set<String> = withContext(Dispatchers.IO) {
-        val file = File(context.filesDir, "updated_threatlist.txt")
-        if (file.exists()) {
-            file.useLines { lines ->
-                lines.filter { it.isNotBlank() && !it.startsWith("#") }
-                    .map { it.trim().lowercase() }
-                    .take(MAX_THREAT_DOMAINS)
-                    .toSet()
-            }
-        } else {
-            emptySet()
-        }
+        BlocklistCacheStore.read(File(context.filesDir, "updated_threatlist.txt"), MAX_THREAT_DOMAINS)
     }
 
     /** Persists a downloaded threat update, replacing the cached threat list.
      *  Returns false (leaving the previous cache untouched) when the update is
-     *  implausibly small per [BlocklistUpdatePolicy]. */
+     *  implausibly small per [BlocklistUpdatePolicy] or exceeds
+     *  [MAX_THREAT_DOMAINS]. */
     suspend fun saveThreatUpdate(newDomains: Set<String>): Boolean = withContext(Dispatchers.IO) {
         val file = File(context.filesDir, "updated_threatlist.txt")
-        if (!BlocklistUpdatePolicy.isPlausibleUpdate(newDomains.size, loadCachedThreatUpdates().size)) {
+        if (!BlocklistCacheStore.replaceIfAcceptable(file, newDomains, MAX_THREAT_DOMAINS)) {
             return@withContext false
         }
-        val capped = if (newDomains.size > MAX_THREAT_DOMAINS) {
-            newDomains.take(MAX_THREAT_DOMAINS).toSet()
-        } else {
-            newDomains
-        }
-        writeAtomically(file, capped)
         initialize() // Reload
         true
-    }
-
-    /** Writes [domains] one-per-line to [file] via a temp file + rename so a
-     *  crash mid-write can never leave a partially-written (and thus shrunken)
-     *  cache behind. On Android's internal storage the rename replaces the
-     *  destination atomically. */
-    private fun writeAtomically(file: File, domains: Set<String>) {
-        val tmp = File(file.parentFile, "${file.name}.tmp")
-        tmp.bufferedWriter().use { writer ->
-            domains.forEach { domain ->
-                writer.write(domain)
-                writer.newLine()
-            }
-        }
-        if (!tmp.renameTo(file)) {
-            // Some filesystems won't rename onto an existing file; replace it.
-            file.delete()
-            if (!tmp.renameTo(file)) {
-                tmp.delete()
-                throw java.io.IOException("Failed to commit blocklist cache: ${file.name}")
-            }
-        }
     }
 }
