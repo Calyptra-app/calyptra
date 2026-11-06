@@ -92,6 +92,10 @@ class AdBlockVpnService : VpnService() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Every delivered start (including STOP/RECONFIGURE) advances the
+        // system's latest startId; give-up's stopSelfResult must compare
+        // against the true latest or it silently fails to stop.
+        synchronized(tunnelLock) { lastStartId = startId }
         when (intent?.action) {
             ACTION_STOP -> {
                 stopVpn()
@@ -117,7 +121,6 @@ class AdBlockVpnService : VpnService() {
         // start can interleave with them (no competing generations, and no
         // start launched just before a give-up's stop).
         val accepted = synchronized(tunnelLock) {
-            lastStartId = startId
             if (userInitiated) {
                 // An explicit tap always restores protection, even after give-up.
                 gaveUp = false
@@ -341,6 +344,10 @@ class AdBlockVpnService : VpnService() {
         // One critical section for teardown and the restart decision, so a stop
         // or a watchdog start (onStartCommand also decides under tunnelLock)
         // can't slip in between and race a second generation.
+        // Snapshot of the latest startId at give-up time, taken in the same
+        // critical section, so a start delivered afterwards (which may already
+        // be recovering) is never the one we stop.
+        var giveUpStartId = 0
         val retried = synchronized(tunnelLock) {
             if (stopping || vpnInterface !== tun) return
             vpnInterface = null
@@ -355,6 +362,7 @@ class AdBlockVpnService : VpnService() {
                     // the stopSelf() below and gets killed by it.
                     gaveUp = true
                     packetLoopGaveUpUntil = System.currentTimeMillis() + GIVE_UP_COOLDOWN_MS
+                    giveUpStartId = lastStartId
                 }
             }
         }
@@ -366,7 +374,7 @@ class AdBlockVpnService : VpnService() {
             alertRestoreFailed()
             // Only if no start was delivered since: a user start racing this
             // give-up must survive it (onStartCommand records lastStartId).
-            stopSelfResult(synchronized(tunnelLock) { lastStartId })
+            stopSelfResult(giveUpStartId)
         }
     }
 
