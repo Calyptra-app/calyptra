@@ -397,12 +397,14 @@ class AdBlockVpnService : VpnService() {
             requestPacket.position(payloadOffset)
             val dnsPacket = requestPacket.slice()
 
-            val response = dnsInterceptor.processDnsPacket(dnsPacket)
+            val result = dnsInterceptor.intercept(dnsPacket)
+            val response = result.response
 
             if (response != null) {
-                Log.d(TAG, "Blocked DNS query")
+                Log.d(TAG, "Answered DNS query locally (blocked=${result.countsAsBlocked})")
+                // In-memory, non-suspending; flushed to the DB off the hot path.
+                if (result.countsAsBlocked) statsRepository.recordBlocked()
                 writeResponse(outputStream, IpUdpPacketBuilder.constructIpUdpResponse(requestPacket, response, ipHeaderLength))
-                statsRepository.incrementCount()
                 return
             }
 
