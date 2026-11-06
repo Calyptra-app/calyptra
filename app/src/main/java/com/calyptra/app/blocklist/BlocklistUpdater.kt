@@ -1,8 +1,6 @@
 package com.calyptra.app.blocklist
 
 import com.calyptra.app.BuildConfig
-import java.io.BufferedReader
-import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 import javax.net.ssl.HttpsURLConnection
@@ -19,9 +17,17 @@ class BlocklistUpdater {
     private val THREAT_URL = "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/tif.mini-onlydomains.txt"
 
     /** Fetches the always-on threat (malware/phishing) blocklist. */
-    fun fetchThreat(): Set<String> = fetch(THREAT_URL)
+    fun fetchThreat(): Set<String> = fetch(THREAT_URL, BlocklistParser.THREAT_LIMITS)
 
-    fun fetch(urlStr: String = DEFAULT_URL): Set<String> {
+    /**
+     * Downloads and stream-parses a list. Throws (so the caller keeps its last
+     * valid cache) on HTTP errors or when the response breaks any of [limits]:
+     * the body is never fully buffered before the limits apply.
+     */
+    fun fetch(
+        urlStr: String = DEFAULT_URL,
+        limits: BlocklistParser.Limits = BlocklistParser.AD_LIMITS,
+    ): Set<String> {
         val url = URL(urlStr)
         val connection = url.openConnection() as HttpsURLConnection
         connection.requestMethod = "GET"
@@ -31,12 +37,13 @@ class BlocklistUpdater {
 
         try {
             if (connection.responseCode == HttpURLConnection.HTTP_OK) {
-                val reader = BufferedReader(InputStreamReader(connection.inputStream))
-                return reader.useLines { lines ->
-                    lines.filter { it.isNotBlank() && !it.startsWith("#") }
-                        .map { it.trim().lowercase() }
-                        .toSet()
+                // Cheap early reject when the server declares an oversized body;
+                // the streaming byte cap still applies when it lies or omits it.
+                val declared = connection.contentLengthLong
+                if (declared > limits.maxBytes) {
+                    throw BlocklistLimitException("Blocklist response declares $declared bytes (max ${limits.maxBytes})")
                 }
+                return connection.inputStream.use { BlocklistParser.parse(it, limits) }
             } else {
                 throw Exception("Failed to fetch blocklist: HTTP ${connection.responseCode}")
             }
