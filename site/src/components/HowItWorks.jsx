@@ -11,10 +11,15 @@ export default function HowItWorks() {
 
     useEffect(() => {
         const ctx = gsap.context(() => {
+            // Reduced motion: nothing animates. The EKG keeps its static,
+            // fully drawn path (CSS can't stop a GSAP tween, so skip it here).
+            if (reduced) {
+                gsap.set('.ekg-path', { strokeDashoffset: 0 });
+                return;
+            }
+
             // EKG draw on the "active" step. A bounded, on-brand loop.
             gsap.fromTo('.ekg-path', { strokeDashoffset: 1000 }, { strokeDashoffset: 0, duration: 3, repeat: -1, ease: 'linear' });
-
-            if (reduced) return;
             // Each step reveals as it enters, so scrolling always moves something.
             // No pin, no scroll-jacking: the steps are ordinary stacked blocks.
             gsap.utils.toArray('.hit-card').forEach((card) => {
