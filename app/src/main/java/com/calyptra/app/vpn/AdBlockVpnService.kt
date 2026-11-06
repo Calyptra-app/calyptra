@@ -18,7 +18,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.Semaphore
-import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.net.DatagramPacket
 import java.net.DatagramSocket
@@ -302,6 +301,8 @@ class AdBlockVpnService : VpnService() {
             .addAddress("10.0.0.2", 32)
             .addDnsServer("10.0.0.1")
             .addRoute("10.0.0.1", 32)
+            // Non-blocking so TunReader can drain with read() and sleep in
+            // poll(); never a blocking read (it can't be woken on stop).
             .setBlocking(false)
 
         for (pkg in SYSTEM_EXCLUDED_PACKAGES) {
@@ -428,28 +429,40 @@ class AdBlockVpnService : VpnService() {
     // cancelling packetJob also cancels in-flight handlers before the old
     // descriptor is closed during reconfigure/stop.
     private suspend fun processPackets(vpnInterface: ParcelFileDescriptor) = coroutineScope {
-        val inputStream = FileInputStream(vpnInterface.fileDescriptor)
         val outputStream = FileOutputStream(vpnInterface.fileDescriptor)
         val buffer = ByteBuffer.allocate(32767)
-
-        while (isActive) {
-            val length = try {
-                withContext(Dispatchers.IO) {
-                    inputStream.read(buffer.array())
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                // The tunnel fd was closed (reconfigure/stop) or the read otherwise
-                // failed. End the loop cleanly; letting it propagate would fail the
-                // coroutine and reach the scope's (handler-less) uncaught path.
-                Log.d(TAG, "Packet read ended", e)
-                break
+        val reader = TunReader(vpnInterface.fileDescriptor)
+        // Cancellation can't interrupt the reader's blocking poll(). This
+        // watcher is cancelled with the loop (reconfigure/stop cancel packetJob
+        // before closing the fd) and wakes the reader from its finally.
+        val waker = launch {
+            try {
+                awaitCancellation()
+            } finally {
+                reader.wake()
             }
-            if (length <= 0) {
-                delay(1)
-                buffer.clear()
-                continue
+        }
+        try {
+            readLoop(reader, buffer, outputStream)
+        } finally {
+            waker.cancel()
+            reader.close()
+        }
+    }
+
+    private fun CoroutineScope.readLoop(
+        reader: TunReader,
+        buffer: ByteBuffer,
+        outputStream: FileOutputStream
+    ) {
+        while (isActive) {
+            // Blocks in poll() at zero CPU until a packet arrives (#72). WOKEN
+            // means a planned exit; ENDED means the tunnel hung up or failed.
+            // Either way the loop ends; startPacketLoop tells them apart.
+            val length = reader.read(buffer.array())
+            if (length < 0) {
+                if (length == TunReader.ENDED) Log.d(TAG, "Packet read ended")
+                break
             }
             // Per-packet body is isolated: a single malformed packet that throws
             // (e.g. an unexpected index) must skip and keep the loop alive, never
