@@ -1,12 +1,8 @@
 package com.calyptra.app.vpn.dot
 
 import com.calyptra.app.vpn.DnsResponseValidator
-import java.io.InputStream
-import java.io.OutputStream
-import java.net.InetSocketAddress
+import java.io.Closeable
 import java.net.Socket
-import javax.net.ssl.SSLSocket
-import javax.net.ssl.SSLSocketFactory
 
 /**
  * Forwards allowed DNS queries to upstream resolvers over **DNS-over-TLS**
@@ -14,109 +10,165 @@ import javax.net.ssl.SSLSocketFactory
  * DNS messages ([DotFraming]). This hides the child's queries from the on-path
  * ISP/network that plain UDP/53 exposes, and authenticates the resolver.
  *
- * Resolvers are tried in order; [query] returns the first valid answer, or null if
- * every endpoint fails — the caller (AdBlockVpnService) then fails open to plain
- * UDP so DNS never black-holes. Filtering is enforced at the resolver, so it
- * survives on both transports; only encryption is lost on the UDP fallback.
+ * Resolvers are tried in order; [query] returns the first valid answer, or null —
+ * the caller (AdBlockVpnService) then fails open to plain UDP so DNS never
+ * black-holes. Filtering is enforced at the resolver, so it survives on both
+ * transports; only encryption is lost on the UDP fallback.
+ *
+ * Latency / resource bounds, so a network that silently drops port 853 or a burst
+ * of lookups can't stall DNS:
+ * - **Backoff** ([DotBackoff]): a failed endpoint is skipped for 5 s, doubling up
+ *   to 5 min, with a single recovery probe when the window expires.
+ * - **Deadline** ([QUERY_DEADLINE_MS]): one query spends at most ~3 s in DoT
+ *   across all endpoints before returning null.
+ * - **Active bound** ([DotSlots]): at most [DotConnectionPolicy.MAX_ACTIVE_CONNECTIONS]
+ *   queries hold or open a connection at once; others wait briefly
+ *   ([SLOT_WAIT_MS]) and then return null rather than queue behind handshakes.
  *
  * Connections are reused across queries (no TLS handshake per lookup) via a small
- * idle pool gated by [DotConnectionPolicy]. The socket/TLS I/O here can't be
- * unit-tested with the project's plain-JUnit stack; the testable wire-format and
- * reuse-window logic live in the pure [DotFraming] / [DotConnectionPolicy] objects.
+ * idle pool gated by [DotConnectionPolicy]. Socket/TLS I/O lives behind
+ * [DotConnector] ([TlsDotConnector] in production) so this class is unit-testable
+ * with fakes.
  *
  * Endpoints are addressed by **IP** (not hostname) to avoid a bootstrap loop — our
  * own DNS is the VPN — while SNI + certificate hostname verification still bind the
  * connection to [DotEndpoint.tlsHost].
  *
- * Thread-safety: every connection lives in exactly one of two lock-guarded sets —
- * [idle] (poolable) or [active] (borrowed, in use by one caller) — so a socket is
- * never used by two threads at once. [close] drains BOTH sets, so teardown
- * deterministically closes in-flight sockets too (unblocking their blocking I/O)
- * rather than waiting on the read timeout.
- *
- * @param protect routes a socket around the VPN tunnel before it connects, so DoT
- *   traffic isn't itself captured by the tunnel (VpnService.protect).
+ * Thread-safety: every open connection lives in exactly one of two lock-guarded
+ * sets — [idle] (poolable) or [active] (borrowed, in use by one caller) — and a
+ * connect/handshake in progress is tracked in [pending]. [close] closes all three
+ * and wakes slot waiters, so teardown returns every caller promptly instead of
+ * waiting on socket timeouts.
  */
 internal class DotResolver(
     private val endpoints: List<DotEndpoint>,
-    private val protect: (Socket) -> Boolean,
-    private val nowMs: () -> Long = { System.currentTimeMillis() },
+    private val connector: DotConnector,
+    private val nowMs: () -> Long = { System.nanoTime() / 1_000_000 },
+    maxActiveConnections: Int = DotConnectionPolicy.MAX_ACTIVE_CONNECTIONS,
+    private val slotWaitMs: Long = SLOT_WAIT_MS,
 ) {
+
+    /** Production constructor: real TLS sockets, routed around the tunnel by [protect]. */
+    constructor(endpoints: List<DotEndpoint>, protect: (Socket) -> Boolean) :
+        this(endpoints, TlsDotConnector(protect))
 
     data class DotEndpoint(val ip: String, val tlsHost: String, val port: Int = 853)
 
     private class PooledConn(
         val endpointIndex: Int,
-        val socket: SSLSocket,
-        val input: InputStream,
-        val output: OutputStream,
+        val conn: DotConnection,
         var idleSinceMs: Long,
     )
 
+    /** A connect/handshake in flight; [socket] is closed by [close] to abort it. */
+    private class PendingOpen {
+        var socket: Closeable? = null
+    }
+
     private val lock = Any()
     private val idle = ArrayDeque<PooledConn>()
-    /** Connections currently borrowed by a query. Tracked so [close] can tear them
-     *  down on stop instead of leaving an in-flight socket open until its timeout. */
     private val active = HashSet<PooledConn>()
+    private val pending = HashSet<PendingOpen>()
+    private val backoff = DotBackoff(endpoints.size)
+    private val slots = DotSlots(maxActiveConnections)
     @Volatile private var closed = false
 
     /**
      * Resolves [dnsData] over DoT. Returns the validated upstream answer, or null
-     * if no endpoint produced a matching response (caller falls back to UDP).
-     * Blocking; call from a [kotlinx.coroutines.Dispatchers.IO] context.
+     * if no endpoint produced a matching response within the deadline, every
+     * endpoint is backed off, or no connection slot freed up in time (caller falls
+     * back to UDP). Blocking; call from a [kotlinx.coroutines.Dispatchers.IO] context.
      */
     fun query(dnsData: ByteArray): ByteArray? {
         if (closed) return null
         val framed = DotFraming.frame(dnsData) ?: return null
-        for (index in endpoints.indices) {
-            queryEndpoint(index, framed, dnsData)?.let { return it }
+        // One slot per query: a query uses at most one connection at a time.
+        if (!slots.acquire(slotWaitMs)) return null
+        try {
+            val budget = DotBudget(nowMs, nowMs() + QUERY_DEADLINE_MS)
+            for (index in endpoints.indices) {
+                if (closed || budget.expired()) return null
+                val admission = backoff.admit(index, nowMs())
+                if (admission == DotBackoff.Admission.SKIP) continue
+                tryEndpoint(index, admission, framed, dnsData, budget)?.let { return it }
+            }
+            return null
+        } finally {
+            slots.release()
         }
-        return null
     }
 
-    /** Drains and closes every connection — idle AND active — so an in-flight
-     *  exchange's blocking I/O is unblocked promptly on teardown. */
+    /** Drains and closes every connection — idle, active AND mid-connect — and
+     *  wakes slot waiters, so every in-flight or waiting query returns promptly. */
     fun close() {
-        val drained = synchronized(lock) {
+        val toClose = synchronized(lock) {
             closed = true
-            val all = idle + active
+            val all = idle.map { it.conn } + active.map { it.conn } + pending.mapNotNull { it.socket }
             idle.clear()
             active.clear()
+            pending.clear()
             all
         }
-        drained.forEach { closeQuietly(it.socket) }
+        slots.close()
+        toClose.forEach { closeQuietly(it) }
+    }
+
+    /** Tries one endpoint and reports the outcome to [backoff] exactly once. */
+    private fun tryEndpoint(
+        index: Int,
+        admission: DotBackoff.Admission,
+        framed: ByteArray,
+        dnsData: ByteArray,
+        budget: DotBudget,
+    ): ByteArray? {
+        val wasProbe = admission == DotBackoff.Admission.PROBE
+        var answer: ByteArray? = null
+        try {
+            answer = queryEndpoint(index, framed, dnsData, budget)
+        } finally {
+            when {
+                answer != null -> backoff.onSuccess(index)
+                // No verdict: the deadline cut a timeout short, or we're shutting down.
+                closed || budget.truncated -> backoff.onAbandon(index, wasProbe)
+                else -> backoff.onFailure(index, nowMs(), wasProbe)
+            }
+        }
+        return answer
     }
 
     /**
      * One endpoint, at most two attempts: a reused warm connection (fast path),
      * then — if that connection was stale/broken — exactly one fresh connection.
-     * Both failing means this endpoint is down; the caller tries the next.
      */
-    private fun queryEndpoint(index: Int, framed: ByteArray, dnsData: ByteArray): ByteArray? {
+    private fun queryEndpoint(index: Int, framed: ByteArray, dnsData: ByteArray, budget: DotBudget): ByteArray? {
         borrowIdle(index)?.let { reused ->
-            exchange(reused, framed, dnsData)?.let { return it }
+            exchange(reused, framed, dnsData, budget)?.let { return it }
             // reused conn was stale/broken (exchange closed it) — try a fresh one.
         }
-        val fresh = open(index) ?: return null // connect/handshake failed or resolver closed
-        return exchange(fresh, framed, dnsData)
+        if (budget.expired()) return null
+        val fresh = open(index, budget) ?: return null
+        return exchange(fresh, framed, dnsData, budget)
     }
 
     /**
      * Writes the framed query and reads back one framed answer on [conn],
      * validating it against the query we sent. On success the connection is
-     * recycled for reuse; on any failure (I/O error, no/short response, or a
-     * response that doesn't match the query) it is closed and null is returned.
-     *
-     * The write of a framed DNS query (<512 bytes in practice) fits the socket send
-     * buffer and so does not block on a healthy connection; the read is bounded by
-     * the socket's soTimeout, and a stuck connection is torn down by [close] on
-     * teardown — so this has no unbounded blocking path for DNS-sized payloads.
+     * recycled for reuse; on any failure (I/O error, timeout, no/short response, or
+     * a response that doesn't match the query) it is closed and null is returned.
+     * Each read is bounded by the smaller of the read timeout and the remaining
+     * query deadline.
      */
-    private fun exchange(conn: PooledConn, framed: ByteArray, dnsData: ByteArray): ByteArray? {
+    private fun exchange(conn: PooledConn, framed: ByteArray, dnsData: ByteArray, budget: DotBudget): ByteArray? {
         return try {
-            conn.output.write(framed)
-            conn.output.flush()
-            val response = DotFraming.readMessage(conn.input)
+            val timeout = budget.timeoutMs(TlsDotConnector.READ_TIMEOUT_MS)
+            if (timeout <= 0) {
+                recycle(conn) // healthy but out of time: keep it warm for the next query
+                return null
+            }
+            conn.conn.setReadTimeout(timeout)
+            conn.conn.output.write(framed)
+            conn.conn.output.flush()
+            val response = DotFraming.readMessage(conn.conn.input)
             if (response != null && DnsResponseValidator.matches(dnsData, response)) {
                 recycle(conn)
                 response
@@ -144,7 +196,7 @@ internal class DotResolver(
                 active.add(conn)
                 return@synchronized conn
             }
-            closeQuietly(conn.socket) // aged out — drop and keep scanning
+            closeQuietly(conn.conn) // aged out — drop and keep scanning
         }
         null
     }
@@ -162,76 +214,59 @@ internal class DotResolver(
                 true
             }
         }
-        if (!keep) closeQuietly(conn.socket)
+        if (!keep) closeQuietly(conn.conn)
     }
 
     /** Drops a borrowed connection: removes it from the active set and closes it. */
     private fun discard(conn: PooledConn) {
         synchronized(lock) { active.remove(conn) }
-        closeQuietly(conn.socket)
+        closeQuietly(conn.conn)
     }
 
-    /** Opens a fresh, validated TLS connection to endpoint [index] and registers it
-     *  as active, or returns null on connect/handshake failure or if the resolver
-     *  has been closed. */
-    private fun open(index: Int): PooledConn? {
-        val ep = endpoints[index]
-        val plain = Socket()
-        val ssl: SSLSocket
-        try {
-            // Route around the tunnel BEFORE connecting so the SYN doesn't loop
-            // back through our own VPN.
-            protect(plain)
-            plain.connect(InetSocketAddress(ep.ip, ep.port), CONNECT_TIMEOUT_MS)
-            plain.soTimeout = READ_TIMEOUT_MS
-            ssl = (SSLSocketFactory.getDefault() as SSLSocketFactory)
-                .createSocket(plain, ep.tlsHost, ep.port, /* autoClose = */ true) as SSLSocket
-            // Bound handshake/read on the wrapping socket too, not just the delegate.
-            ssl.soTimeout = READ_TIMEOUT_MS
-        } catch (e: Exception) {
-            closeQuietly(plain)
-            return null
-        }
-        try {
-            // "HTTPS" endpoint identification makes the handshake verify the cert's
-            // hostname against ep.tlsHost. Without it, a wrapped SSLSocket checks
-            // the chain but NOT the hostname — a valid cert for the wrong host would
-            // pass. (API 24+; minSdk is 26.) createSocket(..., tlsHost, ...) sets SNI.
-            ssl.sslParameters = ssl.sslParameters.apply {
-                endpointIdentificationAlgorithm = "HTTPS"
+    /** Opens a fresh connection to endpoint [index] and registers it as active, or
+     *  returns null on failure or if the resolver has been closed. The in-progress
+     *  socket is tracked in [pending] so [close] can abort the connect/handshake. */
+    private fun open(index: Int, budget: DotBudget): PooledConn? {
+        val attempt = PendingOpen()
+        val register: (Closeable) -> Boolean = { socket ->
+            synchronized(lock) {
+                if (closed) {
+                    false
+                } else {
+                    attempt.socket = socket
+                    pending.add(attempt)
+                    true
+                }
             }
-            ssl.startHandshake()
-        } catch (e: Exception) {
-            closeQuietly(ssl) // autoClose tears down the underlying plain socket too
-            return null
         }
-        val conn = PooledConn(
-            endpointIndex = index,
-            socket = ssl,
-            input = ssl.inputStream,
-            output = ssl.outputStream,
-            idleSinceMs = nowMs(),
-        )
+        val conn = try {
+            connector.open(endpoints[index], budget, register)
+        } catch (e: Exception) {
+            null
+        } finally {
+            synchronized(lock) { pending.remove(attempt) }
+        }
+        if (conn == null) return null
+        val pooled = PooledConn(endpointIndex = index, conn = conn, idleSinceMs = nowMs())
         val registered = synchronized(lock) {
-            if (closed) false else { active.add(conn); true }
+            if (closed) false else { active.add(pooled); true }
         }
         if (!registered) {
-            closeQuietly(ssl) // closed during handshake — don't leak the new socket
+            closeQuietly(conn) // closed during handshake — don't leak the new socket
             return null
         }
-        return conn
-    }
-
-    private fun closeQuietly(socket: Socket?) {
-        try {
-            socket?.close()
-        } catch (e: Exception) {
-            // Best-effort close; nothing actionable on failure.
-        }
+        return pooled
     }
 
     companion object {
-        private const val CONNECT_TIMEOUT_MS = 2500
-        private const val READ_TIMEOUT_MS = 2500
+        /** Total time one query may spend in DoT across all endpoints. Just above a
+         *  single connect timeout, so one dead endpoint can't push a lookup past
+         *  ~3 s before the UDP fallback, while a slow-but-alive one still answers. */
+        const val QUERY_DEADLINE_MS = 3_000L
+
+        /** How long a query waits for an active-connection slot before falling back
+         *  to UDP. Short: a warm DoT exchange takes tens of ms, so a slot normally
+         *  frees quickly; if it doesn't, DoT is saturated and UDP is the better bet. */
+        const val SLOT_WAIT_MS = 300L
     }
 }
