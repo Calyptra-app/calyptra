@@ -145,6 +145,15 @@ class PreferencesRepository(private val context: Context) : PinStore {
             preferences[YIELDED_TO_OTHER_VPN] ?: false
         }
 
+    /** Explicit parent/user toggle: sets protection and clears any yield to
+     *  another VPN (CFT-L1) in one atomic DataStore edit. */
+    suspend fun setProtectionEnabledByUser(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PROTECTION_ENABLED] = enabled
+            preferences[YIELDED_TO_OTHER_VPN] = false
+        }
+    }
+
     suspend fun setYieldedToOtherVpn(yielded: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[YIELDED_TO_OTHER_VPN] = yielded
