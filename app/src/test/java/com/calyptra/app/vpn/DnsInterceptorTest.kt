@@ -408,33 +408,76 @@ class DnsInterceptorTest {
     // --- Domain allowlist (false-positive escape hatch) ---
 
     @Test
-    fun `allowlisted domain resolves Allow even when threat, category and ad listed`() {
-        // The allowlist is the very first check: a parent-rescued domain must win
-        // over every blocking rule, including the always-on threat list.
+    fun `allowlisted domain overrides category and ad lists and goes unfiltered upstream`() {
+        // The allowlist overrides content filtering: Calyptra's category and ad
+        // lists here, and the family-filter resolver upstream (AllowUnfiltered).
         val verdict = DnsPolicy.resolve(
             domain = "rescued.example", queryType = 1,
             isDomainAllowed = { domain -> domain == "rescued.example" },
+            getRedirectIp = { _, _ -> null },
+            isThreatBlocked = { false },
+            isCategoryBlocked = { true },
+            isAdBlocked = { true }
+        )
+        assertEquals(Verdict.AllowUnfiltered, verdict)
+    }
+
+    @Test
+    fun `threat list still blocks an allowlisted domain`() {
+        // Safety is never overridable: a mistyped or compromised allowlisted
+        // domain on the malware/phishing list stays dead.
+        val verdict = DnsPolicy.resolve(
+            domain = "rescued.example", queryType = 1,
+            isDomainAllowed = { true },
             getRedirectIp = { _, _ -> null },
             isThreatBlocked = { true },
             isCategoryBlocked = { true },
             isAdBlocked = { true }
         )
-        assertEquals("allowlist must win over threat/category/ad", Verdict.Allow, verdict)
+        assertEquals(Verdict.BlockNxdomain, verdict)
     }
 
     @Test
-    fun `allowlist wins over a SafeSearch redirect`() {
-        // Allowlisting precedes the redirect — the parent explicitly chose to let
-        // this domain through untouched.
+    fun `SafeSearch redirect still applies to an allowlisted domain`() {
+        // Allowlisting google.com must not switch SafeSearch off.
+        val ip = byteArrayOf(216.toByte(), 239.toByte(), 38, 120)
         val verdict = DnsPolicy.resolve(
             domain = "google.com", queryType = 1,
             isDomainAllowed = { true },
-            getRedirectIp = { _, _ -> byteArrayOf(216.toByte(), 239.toByte(), 38, 120) },
+            getRedirectIp = { _, _ -> ip },
+            isThreatBlocked = { false },
+            isCategoryBlocked = { false },
+            isAdBlocked = { false }
+        )
+        assertTrue(verdict is Verdict.Redirect)
+    }
+
+    @Test
+    fun `non-allowlisted allowed domain goes to the family filter`() {
+        val verdict = DnsPolicy.resolve(
+            domain = "example.com", queryType = 1,
+            isDomainAllowed = { false },
+            getRedirectIp = { _, _ -> null },
             isThreatBlocked = { false },
             isCategoryBlocked = { false },
             isAdBlocked = { false }
         )
         assertEquals(Verdict.Allow, verdict)
+    }
+
+    @Test
+    fun `intercept flags allowlisted domains for the unfiltered resolver`() {
+        val interceptor = makeInterceptor(
+            isDomainAllowed = { domain -> domain == "health.example" },
+            isAdBlocked = { true }
+        )
+        val allowlisted = interceptor.intercept(ByteBuffer.wrap(createDnsQuery("health.example")))
+        assertNull(allowlisted.response)
+        assertTrue(allowlisted.unfiltered)
+        assertFalse(allowlisted.countsAsBlocked)
+
+        val normal = interceptor.intercept(ByteBuffer.wrap(createDnsQuery("other.example")))
+        assertFalse("a non-allowlisted domain is never routed unfiltered", normal.unfiltered)
     }
 
     @Test
@@ -456,7 +499,7 @@ class DnsInterceptorTest {
         // (null response), never sinkholed.
         val interceptor = makeInterceptor(
             isDomainAllowed = { domain -> domain == "health.example" },
-            isThreatBlocked = { true },
+            isCategoryBlocked = { true },
             isAdBlocked = { true }
         )
 
@@ -508,7 +551,9 @@ class DnsInterceptorTest {
             isCategoryBlocked = { true }, // nsfw list over-blocks it
             isAdBlocked = { false }
         )
-        assertEquals(Verdict.Allow, verdict)
+        // Rescued, and sent past the upstream family filter too, which would
+        // otherwise refuse the same health site.
+        assertEquals(Verdict.AllowUnfiltered, verdict)
     }
 
     @Test

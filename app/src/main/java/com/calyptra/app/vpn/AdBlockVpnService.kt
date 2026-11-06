@@ -60,6 +60,9 @@ class AdBlockVpnService : VpnService() {
      *  session in startVpn and closed in stopVpn so pooled TLS sockets don't leak
      *  across a stop/start. Allowed queries try DoT first and fail open to UDP. */
     @Volatile private var dotResolver: DotResolver? = null
+    /** Malware-only DoT transport for parent-allowlisted domains. Same
+     *  per-session lifecycle as [dotResolver]. */
+    @Volatile private var allowlistDotResolver: DotResolver? = null
 
     private val blocklistManager by lazy { (applicationContext as CalyptraApp).blocklistManager }
     private val categoryBlockManager by lazy { (applicationContext as CalyptraApp).categoryBlockManager }
@@ -165,6 +168,8 @@ class AdBlockVpnService : VpnService() {
         // previous start. protect() routes its TCP sockets around our own tunnel.
         dotResolver?.close()
         dotResolver = DotResolver(DOT_ENDPOINTS, protect = { socket: Socket -> protect(socket) })
+        allowlistDotResolver?.close()
+        allowlistDotResolver = DotResolver(ALLOWLIST_DOT_ENDPOINTS, protect = { socket: Socket -> protect(socket) })
         val generation = ++startGeneration
         VpnController.markStarting(true)
         job = freshScope.launch {
@@ -540,7 +545,7 @@ class AdBlockVpnService : VpnService() {
             dnsPacket.get(dnsData)
 
             val responseData = try {
-                queryUpstream(dnsData)
+                queryUpstream(dnsData, unfiltered = result.unfiltered)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -551,7 +556,9 @@ class AdBlockVpnService : VpnService() {
             // Never leave a query hanging. A black-holed lookup forces a client-side
             // timeout and can flip the OS to "no internet" — which breaks Android
             // Auto. Answer SERVFAIL so the stub resolver fails fast and can retry.
-            val payload = responseData ?: buildServfail(dnsData)
+            // Negative answers (e.g. a family-filter block) are cached for at
+            // most a minute, so allowlist changes reach every app quickly.
+            val payload = responseData?.let(NegativeTtlClamp::clamp) ?: buildServfail(dnsData)
             writeResponse(outputStream, IpUdpPacketBuilder.constructIpUdpResponse(requestPacket, ByteBuffer.wrap(payload), ipHeaderLength))
         } catch (e: CancellationException) {
             // Reconfigure/stop cancelled this handler mid-flight: propagate so
@@ -586,7 +593,17 @@ class AdBlockVpnService : VpnService() {
         return r
     }
 
-    private suspend fun queryUpstream(dnsData: ByteArray): ByteArray? = withContext(Dispatchers.IO) {
+    private suspend fun queryUpstream(dnsData: ByteArray, unfiltered: Boolean): ByteArray? = withContext(Dispatchers.IO) {
+        // Parent-allowlisted: the malware-only resolver, so the allowlist can
+        // override a family-filter block upstream. If it is unreachable, fall
+        // through to the filtered chain: worst case the site stays blocked,
+        // never less safe.
+        if (unfiltered) {
+            val answer = allowlistDotResolver?.query(dnsData)
+                ?: queryDnsServer(dnsData, ALLOWLIST_DNS)
+                ?: queryDnsServer(dnsData, ALLOWLIST_DNS_SECONDARY)
+            if (answer != null) return@withContext answer
+        }
         // Encrypted DoT first (CleanBrowsing Family — filtering is preserved by the
         // named TLS profile). Fail OPEN to plain UDP on the same filtering resolvers
         // so a DoT outage/restrictive network never black-holes the child's DNS;
@@ -594,6 +611,10 @@ class AdBlockVpnService : VpnService() {
         // answer against the query (DnsResponseValidator).
         dotResolver?.query(dnsData)
             ?: queryDnsServer(dnsData, PRIMARY_DNS)
+            // Same family filter on its second anycast address before leaving
+            // CleanBrowsing: Cloudflare Families blocks less (e.g. cinobo.com),
+            // so it is only the last resort when CleanBrowsing is fully down.
+            ?: queryDnsServer(dnsData, SECONDARY_DNS)
             ?: queryDnsServer(dnsData, FALLBACK_DNS)
     }
 
@@ -696,6 +717,7 @@ class AdBlockVpnService : VpnService() {
             vpnInterface = null
             // Close pooled DoT TLS sockets so they don't leak past teardown.
             dotResolver?.close()
+            allowlistDotResolver?.close()
         }
         (applicationContext as CalyptraApp).networkMonitor.stopWatching()
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -751,7 +773,19 @@ class AdBlockVpnService : VpnService() {
         const val EXTRA_USER_INITIATED = "com.calyptra.app.vpn.USER_INITIATED"
         private const val TAG = "AdBlockVpnService"
         private const val PRIMARY_DNS = "185.228.168.168"  // CleanBrowsing Family
+        private const val SECONDARY_DNS = "185.228.169.168" // CleanBrowsing Family (2nd)
         private const val FALLBACK_DNS = "1.1.1.3"         // Cloudflare Families
+
+        /** Parent-allowlisted domains only: Cloudflare's malware-blocking
+         *  resolver (no content filtering), so the allowlist can override a
+         *  CleanBrowsing block while known malware/phishing stays refused. */
+        private const val ALLOWLIST_DNS = "1.1.1.2"
+        private const val ALLOWLIST_DNS_SECONDARY = "1.0.0.2"
+        private const val CLOUDFLARE_SECURITY_DOT_HOST = "security.cloudflare-dns.com"
+        private val ALLOWLIST_DOT_ENDPOINTS = listOf(
+            DotResolver.DotEndpoint(ALLOWLIST_DNS, CLOUDFLARE_SECURITY_DOT_HOST),
+            DotResolver.DotEndpoint(ALLOWLIST_DNS_SECONDARY, CLOUDFLARE_SECURITY_DOT_HOST),
+        )
 
         /** DoT endpoints (port 853). CleanBrowsing's Family profile is selected by
          *  the TLS hostname, so adult filtering is guaranteed over the encrypted
