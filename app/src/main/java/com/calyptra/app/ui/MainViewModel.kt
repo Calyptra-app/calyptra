@@ -97,8 +97,13 @@ class MainViewModel(
      *  onAuthorized runs immediately during a grace session, after PIN setup,
      *  or after a successful challenge. Enabling protection must never call this. */
     fun requirePin(action: GatedAction, onAuthorized: () -> Unit) {
+        // A dismissal (e.g. background) while isPinSet() is being read must not
+        // be followed by this request opening a prompt for the abandoned screen.
+        val token = promptRequest
         viewModelScope.launch {
-            when (PinGateReducer.decide(action, pinManager.isPinSet(), pinManager.isInGraceSession())) {
+            val pinSet = pinManager.isPinSet()
+            if (token != promptRequest) return@launch
+            when (PinGateReducer.decide(action, pinSet, pinManager.isInGraceSession())) {
                 PinGateDecision.Proceed -> onAuthorized()
                 PinGateDecision.RequireSetup -> {
                     promptRequest++
@@ -142,6 +147,10 @@ class MainViewModel(
 
     fun dismissPinPrompt() {
         promptRequest++
+        // A correct PIN may still be verifying; ending the session makes its
+        // late success grant no grace. A prompt is only open outside a grace
+        // session, so nothing live is lost.
+        pinManager.endGraceSession()
         pendingAuthorized = null
         _pinPrompt.value = null
     }
