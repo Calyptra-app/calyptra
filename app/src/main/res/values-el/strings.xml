@@ -37,6 +37,9 @@
     <string name="battery_hint_desc">Επιτρέψτε στο Calyptra να αγνοεί τις βελτιστοποιήσεις μπαταρίας ώστε το σύστημα να μην το σταματά</string>
     <string name="battery_prompt_message">Για να παραμένει το παιδί σας προστατευμένο, επιτρέψτε στο Calyptra να αγνοεί τις βελτιστοποιήσεις μπαταρίας. Διαφορετικά, ορισμένα τηλέφωνα σταματούν την προστασία μετά από λίγες ώρες.</string>
     <string name="battery_allow">Να επιτραπεί</string>
+    <string name="alerts_hint_title">Οι ειδοποιήσεις γονέα είναι απενεργοποιημένες</string>
+    <string name="alerts_hint_desc">Ενεργοποιήστε τις ειδοποιήσεις ώστε το Calyptra να σας ενημερώνει αν η προστασία σταματήσει ή αν άλλη εφαρμογή την αναλάβει</string>
+    <string name="alerts_allow">Ενεργοποίηση</string>
     <string name="battery_later">Αργότερα</string>
     <string name="alwayson_hint_title">Το Always-on VPN είναι ανενεργό</string>
     <string name="alwayson_hint_desc">Ενεργοποιήστε το στις ρυθμίσεις VPN για τη μέγιστη προστασία</string>

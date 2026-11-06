@@ -1,5 +1,6 @@
 package com.calyptra.app.system
 
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -22,4 +23,18 @@ class PowerStatusProvider(private val context: Context) {
         )
 
     fun vpnSettingsIntent(): Intent = Intent(Settings.ACTION_VPN_SETTINGS)
+
+    /** Whether Calyptra may post notifications at all (#64). On Android 13+
+     *  this is off until POST_NOTIFICATIONS is granted; on any version the
+     *  parent can switch it off. Parent alerts (revoked, restore failed) are
+     *  notifications, so with this off they never show. */
+    fun areNotificationsAllowed(): Boolean {
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        return manager.areNotificationsEnabled()
+    }
+
+    /** Calyptra's own notification settings page. */
+    fun notificationSettingsIntent(): Intent =
+        Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+            .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
 }

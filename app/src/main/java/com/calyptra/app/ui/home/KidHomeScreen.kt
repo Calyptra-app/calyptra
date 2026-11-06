@@ -1,6 +1,10 @@
 package com.calyptra.app.ui.home
 
 import android.app.Activity
+import androidx.core.content.ContextCompat
+import android.os.Build
+import android.content.pm.PackageManager
+import android.Manifest
 import android.content.Intent
 import android.net.VpnService
 import android.provider.Settings
@@ -62,11 +66,28 @@ fun KidHomeScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
+    // Android 13+: notifications are off until granted, and parent alerts
+    // (protection stopped, another VPN took over) are notifications (#64).
+    // Asked right after the parent turns protection on; Android itself stops
+    // showing the prompt after two refusals, and Settings keeps a way back.
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { viewModel.onResumed() }
+    val requestAlertsIfNeeded = {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
     val vpnPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             viewModel.setProtectionEnabled(true) { VpnController.startVpn(context, userInitiated = true) }
+            requestAlertsIfNeeded()
         }
     }
 
@@ -76,6 +97,7 @@ fun KidHomeScreen(
             vpnPermissionLauncher.launch(intent)
         } else {
             viewModel.setProtectionEnabled(true) { VpnController.startVpn(context, userInitiated = true) }
+            requestAlertsIfNeeded()
         }
     }
 
