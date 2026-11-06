@@ -13,6 +13,7 @@ import com.calyptra.app.blocklist.BlocklistManager
 import com.calyptra.app.safesearch.SafeSearchManager
 import com.calyptra.app.security.PinManager
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 
@@ -98,6 +99,23 @@ class CalyptraApp : Application() {
             androidx.work.ExistingPeriodicWorkPolicy.KEEP,
             workRequest
         )
+
+        // Catch-up: the periodic job keeps its old schedule across upgrades, so
+        // a device whose updates had been failing would wait up to a week more
+        // on a stale list. Run once now if the last success is too old (#85).
+        appScope.launch {
+            val last = preferencesRepository.lastBlocklistUpdate.first()
+            if (com.calyptra.app.blocklist.BlocklistStaleness.needsCatchUp(last, System.currentTimeMillis())) {
+                val catchUp = androidx.work.OneTimeWorkRequestBuilder<com.calyptra.app.worker.BlocklistUpdateWorker>()
+                    .setConstraints(constraints)
+                    .build()
+                androidx.work.WorkManager.getInstance(this@CalyptraApp).enqueueUniqueWork(
+                    "BlocklistUpdateCatchUp",
+                    androidx.work.ExistingWorkPolicy.KEEP,
+                    catchUp
+                )
+            }
+        }
     }
 
     private fun createNotificationChannel() {
