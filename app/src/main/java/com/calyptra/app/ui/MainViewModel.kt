@@ -88,18 +88,30 @@ class MainViewModel(
 
     private var pendingAuthorized: (() -> Unit)? = null
 
+    /** Identifies the open prompt. Bumped on every new prompt and on dismiss,
+     *  so a submit still in flight when the prompt was dismissed (e.g. on
+     *  background) or replaced can't run a callback it wasn't entered for. */
+    private var promptRequest = 0
+
     /** Routes a protection-reducing action through the PIN gate (PIN-L3).
      *  onAuthorized runs immediately during a grace session, after PIN setup,
      *  or after a successful challenge. Enabling protection must never call this. */
     fun requirePin(action: GatedAction, onAuthorized: () -> Unit) {
+        // A dismissal (e.g. background) while isPinSet() is being read must not
+        // be followed by this request opening a prompt for the abandoned screen.
+        val token = promptRequest
         viewModelScope.launch {
-            when (PinGateReducer.decide(action, pinManager.isPinSet(), pinManager.isInGraceSession())) {
+            val pinSet = pinManager.isPinSet()
+            if (token != promptRequest) return@launch
+            when (PinGateReducer.decide(action, pinSet, pinManager.isInGraceSession())) {
                 PinGateDecision.Proceed -> onAuthorized()
                 PinGateDecision.RequireSetup -> {
+                    promptRequest++
                     pendingAuthorized = onAuthorized
                     _pinPrompt.value = PinPromptState(action, isSetup = true)
                 }
                 PinGateDecision.RequireChallenge -> {
+                    promptRequest++
                     pendingAuthorized = onAuthorized
                     _pinPrompt.value = PinPromptState(action, isSetup = false)
                 }
@@ -108,15 +120,20 @@ class MainViewModel(
     }
 
     fun submitPinSetup(pin: String) {
+        val request = promptRequest
         viewModelScope.launch {
             pinManager.setPin(pin)
+            if (request != promptRequest) return@launch
             consumePendingAction()
         }
     }
 
     fun submitPinChallenge(pin: String) {
+        val request = promptRequest
         viewModelScope.launch {
-            when (val result = pinManager.verify(pin)) {
+            val result = pinManager.verify(pin)
+            if (request != promptRequest) return@launch
+            when (result) {
                 VerifyResult.Ok -> consumePendingAction()
                 is VerifyResult.Wrong -> _pinPrompt.update {
                     it?.copy(attemptsLeft = result.attemptsLeft, lockedUntilMillis = null)
@@ -129,6 +146,11 @@ class MainViewModel(
     }
 
     fun dismissPinPrompt() {
+        promptRequest++
+        // A correct PIN may still be verifying; ending the session makes its
+        // late success grant no grace. A prompt is only open outside a grace
+        // session, so nothing live is lost.
+        pinManager.endGraceSession()
         pendingAuthorized = null
         _pinPrompt.value = null
     }

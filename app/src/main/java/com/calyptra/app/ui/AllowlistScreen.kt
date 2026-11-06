@@ -43,6 +43,9 @@ import com.calyptra.app.R
 @Composable
 fun AllowlistScreen(
     onBack: () -> Unit,
+    /** PIN gate for adding a domain (see WhitelistScreen). Removing one
+     *  restores filtering and stays ungated. */
+    requirePin: (GatedAction, () -> Unit) -> Unit,
     viewModel: AllowlistViewModel = viewModel()
 ) {
     val domains by viewModel.domains.collectAsStateWithLifecycle()
@@ -54,8 +57,11 @@ fun AllowlistScreen(
 
     fun submit() {
         if (isValid) {
-            viewModel.addDomain(input)
-            input = ""
+            val domain = input
+            requirePin(GatedAction.DOMAIN_ALLOWLIST) {
+                viewModel.addDomain(domain)
+                input = ""
+            }
         }
     }
 
