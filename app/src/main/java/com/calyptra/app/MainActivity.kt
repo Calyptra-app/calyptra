@@ -1,5 +1,6 @@
 package com.calyptra.app
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -41,11 +42,26 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         // Backgrounding the app ends the parent's PIN grace session (FR-10.6).
-        (application as CalyptraApp).pinManager.endGraceSession()
+        // A configuration change (rotation) is not a background: keeping the
+        // session there keeps it consistent with the screen staying open.
+        if (!isChangingConfigurations) {
+            (application as CalyptraApp).pinManager.endGraceSession()
+            // Drop a half-finished PIN prompt with its pending action, so a
+            // PIN typed before leaving can't be confirmed by someone else later.
+            viewModel.dismissPinPrompt()
+        }
         super.onStop()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // The app has no deep links, but Navigation turns every route into an
+        // implicit one (android-app://androidx.navigation/<route>) and reads
+        // them from the launch intent. MainActivity is exported, so strip the
+        // data and extras to keep other apps from opening a gated screen.
+        intent = Intent(intent).apply {
+            data = null
+            replaceExtras(Bundle())
+        }
         super.onCreate(savedInstanceState)
         setContent {
             CalyptraTheme {
@@ -62,7 +78,12 @@ class MainActivity : ComponentActivity() {
                             !isChangingConfigurations &&
                             NavRoutes.isPinProtected(navController.currentDestination?.route)
                         ) {
-                            navController.popBackStack(NavRoutes.HOME, inclusive = false)
+                            // If home isn't on the stack, reset to it outright.
+                            if (!navController.popBackStack(NavRoutes.HOME, inclusive = false)) {
+                                navController.navigate(NavRoutes.HOME) {
+                                    popUpTo(navController.graph.id) { inclusive = true }
+                                }
+                            }
                         }
                     }
                     lifecycleOwner.lifecycle.addObserver(observer)
@@ -87,14 +108,16 @@ class MainActivity : ComponentActivity() {
                     }
                     composable(NavRoutes.WHITELIST) {
                         WhitelistScreen(
-                            onBack = { navController.popBackStack() }
+                            onBack = { navController.popBackStack() },
+                            requirePin = viewModel::requirePin
                         )
                     }
                     composable(NavRoutes.ALLOWLIST) {
                         // Per-domain allowlist — the false-positive escape hatch.
                         // Reached through the PIN-gated settings door (Phase 2).
                         AllowlistScreen(
-                            onBack = { navController.popBackStack() }
+                            onBack = { navController.popBackStack() },
+                            requirePin = viewModel::requirePin
                         )
                     }
                     composable(NavRoutes.TIMELINE) {
