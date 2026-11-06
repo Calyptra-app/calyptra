@@ -66,7 +66,7 @@ fun KidHomeScreen(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            viewModel.setProtectionEnabled(true) { VpnController.startVpn(context) }
+            viewModel.setProtectionEnabled(true) { VpnController.startVpn(context, userInitiated = true) }
         }
     }
 
@@ -75,7 +75,7 @@ fun KidHomeScreen(
         if (intent != null) {
             vpnPermissionLauncher.launch(intent)
         } else {
-            viewModel.setProtectionEnabled(true) { VpnController.startVpn(context) }
+            viewModel.setProtectionEnabled(true) { VpnController.startVpn(context, userInitiated = true) }
         }
     }
 

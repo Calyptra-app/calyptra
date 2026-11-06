@@ -70,8 +70,11 @@ object VpnController {
         _isRunning.value = state == VpnState.Running
     }
 
-    fun startVpn(context: Context) {
+    /** [userInitiated]: an explicit tap, which bypasses the automatic-restart
+     *  cooldown after repeated packet-loop failures. */
+    fun startVpn(context: Context, userInitiated: Boolean = false) {
         val intent = Intent(context, AdBlockVpnService::class.java)
+            .putExtra(AdBlockVpnService.EXTRA_USER_INITIATED, userInitiated)
         context.startForegroundService(intent)
     }
 
