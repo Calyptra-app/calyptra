@@ -16,7 +16,11 @@
         NOTE: this is a Play-policy "restricted" permission and requires a
         declared-use ("permissions declaration") statement in the Play Console.
     -->
-    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <!-- Lint's QueryAllPackagesPermission is suppressed deliberately: the use
+         is justified above and the app is distributed outside Play. -->
+    <uses-permission
+        android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 

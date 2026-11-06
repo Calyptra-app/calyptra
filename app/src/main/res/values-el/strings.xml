@@ -118,4 +118,6 @@
     <string name="about_license_desc">GNU AGPL-3.0</string>
     <string name="about_privacy_title">Πολιτική απορρήτου</string>
     <string name="about_privacy_desc">Πώς το Calyptra διαχειρίζεται δεδομένα</string>
+    <string name="about_support_title">Υποστηρίξτε την ανάπτυξη</string>
+    <string name="about_support_desc">Το Calyptra είναι δωρεάν. Κεράστε μας έναν καφέ στο Ko-fi</string>
 </resources>
